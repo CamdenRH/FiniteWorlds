@@ -1,5 +1,7 @@
 package dev.lemma.finiteworlds.core;
 
+import dev.lemma.finiteworlds.core.geography.TerrainProvince;
+
 public final class WorldBlueprint {
 
     private final WorldConfig config;
@@ -7,6 +9,13 @@ public final class WorldBlueprint {
     private final float[] landMask;
     private final float[] elevation;
     private final float[] coastDistance;
+
+    private final byte[] terrainProvince;
+
+    private final float[] baseElevation;
+    private final float[] coastRangeUplift;
+    private final float[] cascadeUplift;
+    private final float[] plateauUplift;
 
     public WorldBlueprint(WorldConfig config) {
         this.config = config;
@@ -16,6 +25,21 @@ public final class WorldBlueprint {
         this.landMask = new float[count];
         this.elevation = new float[count];
         this.coastDistance = new float[count];
+
+        this.terrainProvince =
+                new byte[count];
+
+        this.baseElevation =
+                new float[count];
+
+        this.coastRangeUplift =
+                new float[count];
+
+        this.cascadeUplift =
+                new float[count];
+
+        this.plateauUplift =
+                new float[count];
     }
 
     public WorldConfig config() {
@@ -61,6 +85,125 @@ public final class WorldBlueprint {
             float value
     ) {
         coastDistance[
+                index(x, z)
+                ] = value;
+    }
+
+    public TerrainProvince terrainProvince(
+            int x,
+            int z
+    ) {
+
+        return TerrainProvince.fromOrdinal(
+                Byte.toUnsignedInt(
+                        terrainProvince[
+                                index(x, z)
+                                ]
+                )
+        );
+    }
+
+
+    public void setTerrainProvince(
+            int x,
+            int z,
+            TerrainProvince province
+    ) {
+
+        terrainProvince[
+                index(x, z)
+                ] =
+                (byte) province.ordinal();
+    }
+
+
+    public float baseElevation(
+            int x,
+            int z
+    ) {
+
+        return baseElevation[
+                index(x, z)
+                ];
+    }
+
+
+    public void setBaseElevation(
+            int x,
+            int z,
+            float value
+    ) {
+
+        baseElevation[
+                index(x, z)
+                ] = value;
+    }
+
+
+    public float coastRangeUplift(
+            int x,
+            int z
+    ) {
+
+        return coastRangeUplift[
+                index(x, z)
+                ];
+    }
+
+
+    public void setCoastRangeUplift(
+            int x,
+            int z,
+            float value
+    ) {
+
+        coastRangeUplift[
+                index(x, z)
+                ] = value;
+    }
+
+
+    public float cascadeUplift(
+            int x,
+            int z
+    ) {
+
+        return cascadeUplift[
+                index(x, z)
+                ];
+    }
+
+
+    public void setCascadeUplift(
+            int x,
+            int z,
+            float value
+    ) {
+
+        cascadeUplift[
+                index(x, z)
+                ] = value;
+    }
+
+
+    public float plateauUplift(
+            int x,
+            int z
+    ) {
+
+        return plateauUplift[
+                index(x, z)
+                ];
+    }
+
+
+    public void setPlateauUplift(
+            int x,
+            int z,
+            float value
+    ) {
+
+        plateauUplift[
                 index(x, z)
                 ] = value;
     }

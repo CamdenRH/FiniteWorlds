@@ -20,6 +20,7 @@ public final class MountainSystem {
 
     public MountainSystem(
             long worldSeed,
+            String seedNamespace,
             MountainSpine spine,
             double innerWidth,
             double outerWidth,
@@ -38,11 +39,16 @@ public final class MountainSystem {
         this.maximumUplift =
                 maximumUplift;
 
+        long systemSeed =
+                SeedUtil.derive(
+                        worldSeed,
+                        seedNamespace
+                );
 
         this.warpNoise =
                 new ValueNoise(
                         SeedUtil.derive(
-                                worldSeed,
+                                systemSeed,
                                 "mountain-warp"
                         )
                 );
@@ -50,7 +56,7 @@ public final class MountainSystem {
         this.ridgeNoise =
                 new ValueNoise(
                         SeedUtil.derive(
-                                worldSeed,
+                                systemSeed,
                                 "mountain-ridges"
                         )
                 );
@@ -58,7 +64,7 @@ public final class MountainSystem {
         this.reliefNoise =
                 new ValueNoise(
                         SeedUtil.derive(
-                                worldSeed,
+                                systemSeed,
                                 "mountain-relief"
                         )
                 );
@@ -66,7 +72,7 @@ public final class MountainSystem {
         this.passNoise =
                 new ValueNoise(
                         SeedUtil.derive(
-                                worldSeed,
+                                systemSeed,
                                 "mountain-passes"
                         )
                 );
@@ -78,11 +84,19 @@ public final class MountainSystem {
     }
 
 
+    public double maximumUplift() {
+        return maximumUplift;
+    }
+
+
     /*
-     * 0 outside the mountain corridor.
-     * 1 near the core of the range.
+     * Signed normalized-coordinate distance to the
+     * warped mountain spine.
+     *
+     * Positive = west.
+     * Negative = east.
      */
-    public double corridorMask(
+    public MountainProjection projectToSpine(
             double x,
             double z
     ) {
@@ -107,52 +121,90 @@ public final class MountainSystem {
                         0.5
                 ) * 0.018;
 
+        return spine.project(
+                warpedX,
+                warpedZ
+        );
+    }
 
-        double distance =
-                spine.distanceTo(
-                        warpedX,
-                        warpedZ
-                );
+
+    public double signedDistanceToSpine(
+            double x,
+            double z
+    ) {
+
+        return projectToSpine(
+                x,
+                z
+        ).signedDistance();
+    }
 
 
-        /*
-         * Full strength inside innerWidth.
-         *
-         * Smoothly fades out by outerWidth.
-         */
+    /*
+     * Convert a known distance from the spine into
+     * the ordinary 0..1 Cascade corridor mask.
+     */
+    public double corridorMaskFromDistance(
+            double distance
+    ) {
 
         return 1.0
                 - smoothstep(
                 innerWidth,
                 outerWidth,
-                distance
+                Math.abs(
+                        distance
+                )
         );
     }
 
 
-    /*
-     * Actual vertical contribution in Minecraft
-     * blocks.
-     */
+    public double corridorMask(
+            double x,
+            double z
+    ) {
+
+        return corridorMaskFromDistance(
+                signedDistanceToSpine(
+                        x,
+                        z
+                )
+        );
+    }
+
+
     public double upliftAt(
             double x,
             double z
     ) {
 
-        double mask =
+        return upliftAt(
+                x,
+                z,
                 corridorMask(
                         x,
                         z
-                );
+                )
+        );
+    }
+
+
+    /*
+     * Version used by our physiography pass.
+     *
+     * It lets us reuse a Cascade mask we have already
+     * calculated instead of scanning MountainSpine again.
+     */
+    public double upliftAt(
+            double x,
+            double z,
+            double mask
+    ) {
 
         if (mask <= 0.0) {
             return 0.0;
         }
 
-
-        /*
-         * Broad regional mountain variation.
-         */
         double regional =
                 reliefNoise.fbm(
                         x * 7.0,
@@ -166,13 +218,6 @@ public final class MountainSystem {
                 0.75
                         + regional * 0.25;
 
-
-        /*
-         * Ridged component.
-         *
-         * This is now geographically restricted
-         * to the mountain corridor.
-         */
         double rawRidge =
                 ridgeNoise.fbm(
                         x * 15.0,
@@ -195,13 +240,6 @@ public final class MountainSystem {
                 0.35
                         + ridge * 0.65;
 
-
-        /*
-         * Passes / low saddles along the range.
-         *
-         * This prevents the spine from becoming
-         * an uninterrupted wall.
-         */
         double pass =
                 passNoise.fbm(
                         x * 2.0,
@@ -222,17 +260,11 @@ public final class MountainSystem {
                 0.55
                         + passStrength * 0.45;
 
-
-        /*
-         * Sharpen mountain concentration toward
-         * the central part of the corridor.
-         */
         double core =
                 Math.pow(
                         mask,
                         1.55
                 );
-
 
         return maximumUplift
                 * core

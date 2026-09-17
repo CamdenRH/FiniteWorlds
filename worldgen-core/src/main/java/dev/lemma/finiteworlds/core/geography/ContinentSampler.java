@@ -320,7 +320,7 @@ public final class ContinentSampler {
                 + fine
                 * fineWeight
                 + micro
-                + microWeight;
+                * microWeight;
     }
 
 

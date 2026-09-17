@@ -8,6 +8,46 @@ import java.util.SplittableRandom;
 
 public final class ContinentPlanner {
 
+    /*
+     * Shared mountain-system geometry constants.
+     *
+     * Keeping these in one place prevents the placement solver from
+     * using different influence widths than the actual MountainSystem.
+     */
+    private static final double CASCADE_OUTER_WIDTH =
+            0.18;
+
+    private static final double WESTERN_INNER_WIDTH =
+            0.034;
+
+    private static final double WESTERN_OUTER_WIDTH =
+            0.090;
+
+    private static final double WESTERN_LOWLAND_GAP =
+            0.040;
+
+    private static final double WESTERN_SOUND_CLEARANCE =
+            0.22;
+
+    /*
+     * Most western ranges remain detached from the shoreline, but a
+     * minority are allowed to run into the coast like a subdued
+     * Olympic / Coast Mountains analogue.
+     */
+    private static final double WESTERN_COASTAL_CONTACT_CHANCE =
+            0.32;
+
+    /*
+     * The mountain spine itself should remain on land.  A coastal
+     * range "meets the ocean" because its outer mountain corridor
+     * reaches the shoreline, not because the spine is placed offshore.
+     */
+    private static final double WESTERN_MINIMUM_LAND_MARGIN =
+            0.010;
+
+    private static final double WESTERN_INLAND_COAST_GAP =
+            0.020;
+
     private ContinentPlanner() {
     }
 
@@ -312,10 +352,25 @@ public final class ContinentPlanner {
         );
 
         /*
+         * Keep an exact planner-side representation of the same
+         * generated mainland boundary.  The western-range solver uses
+         * this instead of the old approximate circular coastal radius.
+         */
+        CoastlineProfile mainlandCoastline =
+                createCoastlineProfile(
+                        baseRadiusX,
+                        baseRadiusZ,
+                        mainlandRadius
+                );
+
+        /*
          * =====================================================
          * WESTERN SOUND SYSTEM ONLY
          * =====================================================
          */
+
+        List<List<GeoPoint>> soundClearancePaths =
+                new ArrayList<>();
 
         double primarySoundAngle =
                 Math.PI
@@ -334,6 +389,10 @@ public final class ContinentPlanner {
                         9,
                         0.048
                 );
+
+        soundClearancePaths.add(
+                primarySound
+        );
 
         cutouts.add(
                 new TaperedSplineShape(
@@ -355,22 +414,16 @@ public final class ContinentPlanner {
 
         addSoundBranches(
                 cutouts,
+                soundClearancePaths,
                 random,
                 primarySound,
                 primarySoundAngle,
 
                 primaryBranchCount,
 
-                /*
-                 * Slightly wider than previous version.
-                 */
                 0.020,
                 0.0075,
 
-                /*
-                 * Slightly longer, but still clearly
-                 * subordinate to the main sound.
-                 */
                 0.040,
                 0.075
         );
@@ -404,6 +457,11 @@ public final class ContinentPlanner {
                                 : 0.38;
             }
 
+            angle =
+                    normalizeAngle(
+                            angle
+                    );
+
             List<GeoPoint> path =
                     createSoundPath(
                             random,
@@ -425,6 +483,10 @@ public final class ContinentPlanner {
                                     0.036
                             )
                     );
+
+            soundClearancePaths.add(
+                    path
+            );
 
             cutouts.add(
                     new TaperedSplineShape(
@@ -457,6 +519,7 @@ public final class ContinentPlanner {
 
                 addSoundBranches(
                         cutouts,
+                        soundClearancePaths,
                         random,
                         path,
                         angle,
@@ -831,25 +894,74 @@ public final class ContinentPlanner {
             );
         }
 
-        MountainSpine mountainSpine =
+        MountainSpine cascadeSpine =
                 new MountainSpine(
                         mountainControls,
                         24
                 );
 
-        MountainSystem mountainSystem =
+        MountainSystem cascadeMountainSystem =
                 new MountainSystem(
                         worldSeed,
-                        mountainSpine,
+                        "cascades",
+                        cascadeSpine,
                         0.045,
-                        0.18,
+                        CASCADE_OUTER_WIDTH,
                         190.0
+                );
+
+        /*
+         * =====================================================
+         * LOCALIZED WESTERN MOUNTAIN SYSTEM
+         * =====================================================
+         *
+         * Short, compact and seed-random.
+         * It occupies only part of the western region, leaving
+         * other western lowlands open all the way to the ocean.
+         */
+
+        WesternRangePlacement westernPlacement =
+                createWesternRangeControls(
+                        random,
+                        soundClearancePaths,
+                        mountainControls,
+                        mainlandCoastline
+                );
+
+        MountainSpine westernSpine =
+                new MountainSpine(
+                        westernPlacement.controls(),
+                        18
+                );
+
+        /*
+         * If a seed has very little free western lowland, the placement
+         * solver is allowed to make the Olympic-like range narrower.
+         * This preserves a real lowland gap instead of forcing the range
+         * into the Cascades or the sound network.
+         */
+        double westernWidthScale =
+                westernPlacement.widthScale();
+
+        MountainSystem westernMountainSystem =
+                new MountainSystem(
+                        worldSeed,
+                        "western-range",
+                        westernSpine,
+                        WESTERN_INNER_WIDTH * westernWidthScale,
+                        WESTERN_OUTER_WIDTH * westernWidthScale,
+                        range(
+                                random,
+                                95.0,
+                                125.0
+                        )
                 );
 
         return new ContinentPlan(
                 land,
                 cutouts,
-                mountainSystem
+                cascadeMountainSystem,
+                westernMountainSystem
         );
     }
 
@@ -952,6 +1064,7 @@ public final class ContinentPlanner {
 
     private static void addSoundBranches(
             List<GeoShape> cutouts,
+            List<List<GeoPoint>> soundClearancePaths,
             SplittableRandom random,
             List<GeoPoint> mainPath,
             double soundAngle,
@@ -1060,14 +1173,26 @@ public final class ContinentPlanner {
                 branchPath.add(
                         new GeoPoint(
                                 start.x()
-                                        + perpendicularX * (sideways + curve)
-                                        + inwardX * forward,
+                                        + perpendicularX
+                                        * (sideways + curve)
+                                        + inwardX
+                                        * forward,
+
                                 start.z()
-                                        + perpendicularZ * (sideways + curve)
-                                        + inwardZ * forward
+                                        + perpendicularZ
+                                        * (sideways + curve)
+                                        + inwardZ
+                                        * forward
                         )
                 );
             }
+
+            /*
+             * Keep the branch for western-range exclusion.
+             */
+            soundClearancePaths.add(
+                    branchPath
+            );
 
             cutouts.add(
                     new TaperedSplineShape(
@@ -1078,6 +1203,200 @@ public final class ContinentPlanner {
                     )
             );
         }
+    }
+
+    /*
+     * =========================================================
+     * LOCALIZED WESTERN RANGE
+     * =========================================================
+     *
+     * Olympic-inspired in layout, but deliberately less
+     * pronounced.  This creates a short curved mountain spine
+     * near one portion of the western coast instead of a range
+     * extending along the entire coastline.
+     */
+    private static WesternRangePlacement createWesternRangeControls(
+            SplittableRandom random,
+            List<List<GeoPoint>> soundPaths,
+            List<GeoPoint> cascadeControls,
+            CoastlineProfile coastline
+    ) {
+
+        /*
+         * Actual system influence radii.
+         */
+        final double minimumCascadeClearance =
+                CASCADE_OUTER_WIDTH
+                        + WESTERN_OUTER_WIDTH
+                        + WESTERN_LOWLAND_GAP;
+
+        /*
+         * Keep the western system well away from the entire sound
+         * network, including branches.
+         */
+        final double minimumSoundClearance =
+                WESTERN_SOUND_CLEARANCE;
+
+        /*
+         * This choice is seed-stable because it is made once before
+         * the candidate search starts.
+         *
+         * Coastal mode means the OUTER mountain corridor is allowed to
+         * touch the shoreline.  The mountain spine still has to remain
+         * on the mainland.
+         */
+        boolean preferCoastalContact =
+                random.nextDouble()
+                        < WESTERN_COASTAL_CONTACT_CHANCE;
+
+        /*
+         * Planner-level search only.  This does not run per terrain
+         * sample, so a few hundred candidates are inexpensive and are
+         * much safer than forcing a range into a bad pocket.
+         */
+        final int maxAttempts =
+                160;
+
+        List<GeoPoint> bestCandidate =
+                null;
+
+        double bestClearance =
+                Double.NEGATIVE_INFINITY;
+
+        for (
+                int attempt = 0;
+                attempt < maxAttempts;
+                attempt++
+        ) {
+
+            /*
+             * pi = due west.
+             *
+             * Keep this on the western half, but allow substantial
+             * north/south movement so it can escape sounds and the
+             * Cascade corridor.
+             */
+            double rangeAngle =
+                    Math.PI
+                            + range(
+                            random,
+                            -1.18,
+                            1.18
+                    );
+
+            double inlandOffset;
+
+            if (preferCoastalContact) {
+
+                /*
+                 * Close enough that the scaled outer corridor reaches
+                 * the real generated coastline.
+                 */
+                inlandOffset =
+                        range(
+                                random,
+                                0.050,
+                                0.080
+                        );
+
+            } else {
+
+                /*
+                 * Detached massif with a genuine strip of lowland
+                 * between the range and ocean.
+                 */
+                inlandOffset =
+                        range(
+                                random,
+                                0.125,
+                                0.190
+                        );
+            }
+
+            List<GeoPoint> candidate =
+                    createWesternRangeCandidate(
+                            random,
+                            coastline,
+                            rangeAngle,
+                            inlandOffset,
+                            1.0
+                    );
+
+            if (
+                    !isWesternRangeCandidateValid(
+                            candidate,
+                            coastline,
+                            soundPaths,
+                            cascadeControls,
+                            1.0,
+                            preferCoastalContact,
+                            minimumSoundClearance,
+                            minimumCascadeClearance
+                    )
+            ) {
+                continue;
+            }
+
+            double soundDistance =
+                    distanceToSoundNetwork(
+                            candidate,
+                            soundPaths
+                    );
+
+            double cascadeDistance =
+                    distanceBetweenPolylines(
+                            candidate,
+                            cascadeControls
+                    );
+
+            /*
+             * Prefer the center of the safest available lowland pocket.
+             * Coast relation has already been handled as a hard
+             * mode-specific rule above.
+             */
+            double minimumClearance =
+                    Math.min(
+                            soundDistance,
+                            cascadeDistance
+                    );
+
+            if (
+                    minimumClearance
+                            > bestClearance
+            ) {
+
+                bestClearance =
+                        minimumClearance;
+
+                bestCandidate =
+                        candidate;
+            }
+        }
+
+        if (bestCandidate != null) {
+            return new WesternRangePlacement(
+                    bestCandidate,
+                    1.0
+            );
+        }
+
+        /*
+         * The seeded random pass could not satisfy every hard
+         * requirement.  Search the full western sector densely.
+         *
+         * We try the seed-selected coastal/inland style first, then
+         * permit the opposite style rather than violating sound or
+         * Cascade separation.
+         */
+        return createWesternRangeGuaranteed(
+                random,
+                soundPaths,
+                cascadeControls,
+                coastline,
+                minimumSoundClearance,
+                minimumCascadeClearance,
+                preferCoastalContact
+        );
     }
 
     /*
@@ -1199,6 +1518,23 @@ public final class ContinentPlanner {
      * =========================================================
      */
 
+    private static double normalizeAngle(
+            double angle
+    ) {
+
+        double twoPi =
+                Math.PI * 2.0;
+
+        angle %=
+                twoPi;
+
+        if (angle < 0.0) {
+            angle += twoPi;
+        }
+
+        return angle;
+    }
+
     private static double circularAngleDistance(
             double a,
             double b
@@ -1281,10 +1617,1364 @@ public final class ContinentPlanner {
                 : result;
     }
 
+    private record WesternRangePlacement(
+            List<GeoPoint> controls,
+            double widthScale
+    ) {
+    }
+
     private record CoastFeature(
             double angle,
             double amplitude,
             double width
     ) {
     }
+
+    /*
+     * Exact planner-side representation of the generated mainland
+     * outline.  boundaryPoints contains the closing point as well, so
+     * it can be treated as an ordinary polyline by the distance helpers.
+     */
+    private record CoastlineProfile(
+            double radiusX,
+            double radiusZ,
+            double[] radialScale,
+            List<GeoPoint> boundaryPoints
+    ) {
+    }
+
+    private record CoastFrame(
+            GeoPoint point,
+            double tangentX,
+            double tangentZ,
+            double inwardX,
+            double inwardZ
+    ) {
+    }
+
+    private static CoastlineProfile createCoastlineProfile(
+            double radiusX,
+            double radiusZ,
+            double[] radialScale
+    ) {
+
+        double[] copiedScale =
+                radialScale.clone();
+
+        List<GeoPoint> boundary =
+                new ArrayList<>();
+
+        /*
+         * Use more samples than the source radial array so distance
+         * checks see the same smooth Catmull-Rom coastline that the
+         * actual RadialSplineShape produces.
+         */
+        int sampleCount =
+                Math.max(
+                        128,
+                        copiedScale.length * 2
+                );
+
+        for (
+                int i = 0;
+                i < sampleCount;
+                i++
+        ) {
+
+            double angle =
+                    Math.PI
+                            * 2.0
+                            * i
+                            / sampleCount;
+
+            double scale =
+                    sampleCircularCatmullRom(
+                            copiedScale,
+                            angle
+                    );
+
+            boundary.add(
+                    new GeoPoint(
+                            Math.cos(angle)
+                                    * radiusX
+                                    * scale,
+                            Math.sin(angle)
+                                    * radiusZ
+                                    * scale
+                    )
+            );
+        }
+
+        /*
+         * Explicitly close the polyline.
+         */
+        boundary.add(
+                boundary.getFirst()
+        );
+
+        return new CoastlineProfile(
+                radiusX,
+                radiusZ,
+                copiedScale,
+                List.copyOf(
+                        boundary
+                )
+        );
+    }
+
+    private static double sampleCircularCatmullRom(
+            double[] samples,
+            double angle
+    ) {
+
+        angle =
+                normalizeAngle(
+                        angle
+                );
+
+        double position =
+                angle
+                        / (Math.PI * 2.0)
+                        * samples.length;
+
+        int i1 =
+                (int) Math.floor(
+                        position
+                );
+
+        double t =
+                position - i1;
+
+        double p0 =
+                samples[
+                        mod(
+                                i1 - 1,
+                                samples.length
+                        )
+                        ];
+
+        double p1 =
+                samples[
+                        mod(
+                                i1,
+                                samples.length
+                        )
+                        ];
+
+        double p2 =
+                samples[
+                        mod(
+                                i1 + 1,
+                                samples.length
+                        )
+                        ];
+
+        double p3 =
+                samples[
+                        mod(
+                                i1 + 2,
+                                samples.length
+                        )
+                        ];
+
+        double t2 =
+                t * t;
+
+        double t3 =
+                t2 * t;
+
+        return 0.5
+                * (
+                2.0 * p1
+
+                        + (-p0 + p2)
+                        * t
+
+                        + (
+                        2.0 * p0
+                                - 5.0 * p1
+                                + 4.0 * p2
+                                - p3
+                ) * t2
+
+                        + (
+                        -p0
+                                + 3.0 * p1
+                                - 3.0 * p2
+                                + p3
+                ) * t3
+        );
+    }
+
+    private static GeoPoint coastlinePointAt(
+            CoastlineProfile coastline,
+            double angle
+    ) {
+
+        double scale =
+                sampleCircularCatmullRom(
+                        coastline.radialScale(),
+                        angle
+                );
+
+        return new GeoPoint(
+                Math.cos(angle)
+                        * coastline.radiusX()
+                        * scale,
+                Math.sin(angle)
+                        * coastline.radiusZ()
+                        * scale
+        );
+    }
+
+    private static CoastFrame coastlineFrameAt(
+            CoastlineProfile coastline,
+            double angle
+    ) {
+
+        GeoPoint point =
+                coastlinePointAt(
+                        coastline,
+                        angle
+                );
+
+        final double delta =
+                0.012;
+
+        GeoPoint before =
+                coastlinePointAt(
+                        coastline,
+                        angle - delta
+                );
+
+        GeoPoint after =
+                coastlinePointAt(
+                        coastline,
+                        angle + delta
+                );
+
+        double tangentX =
+                after.x() - before.x();
+
+        double tangentZ =
+                after.z() - before.z();
+
+        double tangentLength =
+                Math.sqrt(
+                        tangentX * tangentX
+                                + tangentZ * tangentZ
+                );
+
+        if (tangentLength < 1.0e-9) {
+
+            tangentX =
+                    -Math.sin(angle);
+
+            tangentZ =
+                    Math.cos(angle);
+
+            tangentLength =
+                    1.0;
+        }
+
+        tangentX /=
+                tangentLength;
+
+        tangentZ /=
+                tangentLength;
+
+        /*
+         * One normal points inland and the other points to sea.
+         * Pick the one whose dot product points toward the origin.
+         */
+        double inwardX =
+                -tangentZ;
+
+        double inwardZ =
+                tangentX;
+
+        double towardCenterX =
+                -point.x();
+
+        double towardCenterZ =
+                -point.z();
+
+        if (
+                inwardX * towardCenterX
+                        + inwardZ * towardCenterZ
+                        < 0.0
+        ) {
+
+            inwardX =
+                    -inwardX;
+
+            inwardZ =
+                    -inwardZ;
+        }
+
+        return new CoastFrame(
+                point,
+                tangentX,
+                tangentZ,
+                inwardX,
+                inwardZ
+        );
+    }
+
+    /*
+     * Same normalized signed field used by the mainland
+     * RadialSplineShape: positive values are inside land.
+     */
+    private static double mainlandMargin(
+            CoastlineProfile coastline,
+            double x,
+            double z
+    ) {
+
+        double nx =
+                x / coastline.radiusX();
+
+        double nz =
+                z / coastline.radiusZ();
+
+        double actualRadius =
+                Math.sqrt(
+                        nx * nx
+                                + nz * nz
+                );
+
+        double angle =
+                Math.atan2(
+                        nz,
+                        nx
+                );
+
+        if (angle < 0.0) {
+            angle +=
+                    Math.PI * 2.0;
+        }
+
+        double targetRadius =
+                sampleCircularCatmullRom(
+                        coastline.radialScale(),
+                        angle
+                );
+
+        return targetRadius
+                - actualRadius;
+    }
+
+    private static boolean westernRangeSpineIsOnMainland(
+            List<GeoPoint> candidate,
+            CoastlineProfile coastline
+    ) {
+
+        if (candidate.isEmpty()) {
+            return false;
+        }
+
+        /*
+         * Check controls and several points between controls.  This
+         * catches a short spline segment trying to cut across a bay or
+         * leave the coast between two otherwise valid control points.
+         */
+        final int samplesPerSegment =
+                4;
+
+        for (
+                int i = 0;
+                i < candidate.size() - 1;
+                i++
+        ) {
+
+            GeoPoint a =
+                    candidate.get(i);
+
+            GeoPoint b =
+                    candidate.get(i + 1);
+
+            for (
+                    int sample = 0;
+                    sample <= samplesPerSegment;
+                    sample++
+            ) {
+
+                double t =
+                        sample
+                                / (double) samplesPerSegment;
+
+                double x =
+                        lerp(
+                                a.x(),
+                                b.x(),
+                                t
+                        );
+
+                double z =
+                        lerp(
+                                a.z(),
+                                b.z(),
+                                t
+                        );
+
+                if (
+                        mainlandMargin(
+                                coastline,
+                                x,
+                                z
+                        ) < WESTERN_MINIMUM_LAND_MARGIN
+                ) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static boolean isWesternRangeCandidateValid(
+            List<GeoPoint> candidate,
+            CoastlineProfile coastline,
+            List<List<GeoPoint>> soundPaths,
+            List<GeoPoint> cascadeControls,
+            double scale,
+            boolean coastalContact,
+            double minimumSoundClearance,
+            double minimumCascadeClearance
+    ) {
+
+        if (
+                !westernRangeSpineIsOnMainland(
+                        candidate,
+                        coastline
+                )
+        ) {
+            return false;
+        }
+
+        double soundDistance =
+                distanceToSoundNetwork(
+                        candidate,
+                        soundPaths
+                );
+
+        /*
+         * The clearance inputs are measured spine-to-spine.  If the
+         * western system has been deliberately scaled down, reduce its
+         * required centerline separation by exactly the amount its
+         * outer influence radius shrank.  This preserves the same
+         * lowland gap instead of over-penalizing emergency compact
+         * ranges.
+         */
+        double scaledSoundClearance =
+                minimumSoundClearance
+                        - WESTERN_OUTER_WIDTH
+                        * (1.0 - scale);
+
+        if (
+                soundDistance
+                        < scaledSoundClearance
+        ) {
+            return false;
+        }
+
+        double cascadeDistance =
+                distanceBetweenPolylines(
+                        candidate,
+                        cascadeControls
+                );
+
+        double scaledCascadeClearance =
+                minimumCascadeClearance
+                        - WESTERN_OUTER_WIDTH
+                        * (1.0 - scale);
+
+        if (
+                cascadeDistance
+                        < scaledCascadeClearance
+        ) {
+            return false;
+        }
+
+        double coastDistance =
+                distanceBetweenPolylines(
+                        candidate,
+                        coastline.boundaryPoints()
+                );
+
+        double scaledOuterWidth =
+                WESTERN_OUTER_WIDTH
+                        * scale;
+
+        if (coastalContact) {
+
+            /*
+             * The corridor must actually be capable of reaching the
+             * shoreline.  A small tolerance accounts for the later
+             * MountainSystem coordinate warp.
+             */
+            double maximumContactDistance =
+                    scaledOuterWidth
+                            + 0.010;
+
+            if (
+                    coastDistance
+                            > maximumContactDistance
+            ) {
+                return false;
+            }
+
+        } else {
+
+            /*
+             * Detached variant: preserve visible lowlands between the
+             * coast and the western massif.
+             */
+            double minimumCoastDistance =
+                    scaledOuterWidth
+                            + WESTERN_INLAND_COAST_GAP;
+
+            if (
+                    coastDistance
+                            < minimumCoastDistance
+            ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static double distanceToPolyline(
+            double x,
+            double z,
+            List<GeoPoint> points
+    ) {
+
+        if (points.isEmpty()) {
+            return Double.POSITIVE_INFINITY;
+        }
+
+        if (points.size() == 1) {
+
+            double dx =
+                    x - points.get(0).x();
+
+            double dz =
+                    z - points.get(0).z();
+
+            return Math.sqrt(
+                    dx * dx
+                            + dz * dz
+            );
+        }
+
+        double minimumDistance =
+                Double.POSITIVE_INFINITY;
+
+        for (
+                int i = 0;
+                i < points.size() - 1;
+                i++
+        ) {
+
+            GeoPoint a =
+                    points.get(i);
+
+            GeoPoint b =
+                    points.get(i + 1);
+
+            double distance =
+                    distanceToSegment(
+                            x,
+                            z,
+                            a.x(),
+                            a.z(),
+                            b.x(),
+                            b.z()
+                    );
+
+            minimumDistance =
+                    Math.min(
+                            minimumDistance,
+                            distance
+                    );
+        }
+
+        return minimumDistance;
+    }
+
+    private static double distanceToSegment(
+            double px,
+            double pz,
+            double ax,
+            double az,
+            double bx,
+            double bz
+    ) {
+
+        double abX =
+                bx - ax;
+
+        double abZ =
+                bz - az;
+
+        double apX =
+                px - ax;
+
+        double apZ =
+                pz - az;
+
+        double lengthSquared =
+                abX * abX
+                        + abZ * abZ;
+
+        if (lengthSquared < 1.0e-12) {
+
+            double dx =
+                    px - ax;
+
+            double dz =
+                    pz - az;
+
+            return Math.sqrt(
+                    dx * dx
+                            + dz * dz
+            );
+        }
+
+        double t =
+                (
+                        apX * abX
+                                + apZ * abZ
+                ) / lengthSquared;
+
+        t =
+                clamp(
+                        t,
+                        0.0,
+                        1.0
+                );
+
+        double closestX =
+                ax + abX * t;
+
+        double closestZ =
+                az + abZ * t;
+
+        double dx =
+                px - closestX;
+
+        double dz =
+                pz - closestZ;
+
+        return Math.sqrt(
+                dx * dx
+                        + dz * dz
+        );
+    }
+
+    private static List<GeoPoint> createWesternRangeCandidate(
+            SplittableRandom random,
+            CoastlineProfile coastline,
+            double rangeAngle,
+            double inlandOffset,
+            double scale
+    ) {
+
+        CoastFrame frame =
+                coastlineFrameAt(
+                        coastline,
+                        rangeAngle
+                );
+
+        double coastX =
+                frame.point().x();
+
+        double coastZ =
+                frame.point().z();
+
+        double inwardX =
+                frame.inwardX();
+
+        double inwardZ =
+                frame.inwardZ();
+
+        double alongCoastX =
+                frame.tangentX();
+
+        double alongCoastZ =
+                frame.tangentZ();
+
+        /*
+         * Keep only a small along-shore displacement.  The selected
+         * coastline angle should control the macro location rather
+         * than letting random translation drift the massif toward a
+         * sound or the Cascades after validation.
+         */
+        double alongCoastOffset =
+                range(
+                        random,
+                        -0.022,
+                        0.022
+                ) * scale;
+
+        double centerX =
+                coastX
+                        + inwardX * inlandOffset
+                        + alongCoastX * alongCoastOffset;
+
+        double centerZ =
+                coastZ
+                        + inwardZ * inlandOffset
+                        + alongCoastZ * alongCoastOffset;
+
+        /*
+         * Mostly parallel to the local coastline, with just enough
+         * rotation to avoid a stamped / mechanically tangent look.
+         */
+        double rotation =
+                range(
+                        random,
+                        -0.30,
+                        0.30
+                );
+
+        double axisX =
+                alongCoastX
+                        * Math.cos(rotation)
+                        + inwardX
+                        * Math.sin(rotation)
+                        * 0.30;
+
+        double axisZ =
+                alongCoastZ
+                        * Math.cos(rotation)
+                        + inwardZ
+                        * Math.sin(rotation)
+                        * 0.30;
+
+        double axisLength =
+                Math.sqrt(
+                        axisX * axisX
+                                + axisZ * axisZ
+                );
+
+        if (axisLength < 1.0e-9) {
+
+            axisX =
+                    alongCoastX;
+
+            axisZ =
+                    alongCoastZ;
+
+            axisLength =
+                    1.0;
+        }
+
+        axisX /=
+                axisLength;
+
+        axisZ /=
+                axisLength;
+
+        /*
+         * Perpendicular to the spine.  Flip it so the Olympic-like
+         * arc always bows inland instead of bulging out to sea.
+         */
+        double crossX =
+                -axisZ;
+
+        double crossZ =
+                axisX;
+
+        if (
+                crossX * inwardX
+                        + crossZ * inwardZ
+                        < 0.0
+        ) {
+
+            crossX =
+                    -crossX;
+
+            crossZ =
+                    -crossZ;
+        }
+
+        double halfLength =
+                range(
+                        random,
+                        0.075,
+                        0.105
+                ) * scale;
+
+        double bulge =
+                range(
+                        random,
+                        0.030,
+                        0.052
+                ) * scale;
+
+        double middleBiasStrength =
+                range(
+                        random,
+                        0.000,
+                        0.014
+                ) * scale;
+
+        List<GeoPoint> controls =
+                new ArrayList<>();
+
+        int controlCount =
+                6;
+
+        for (
+                int i = 0;
+                i < controlCount;
+                i++
+        ) {
+
+            double t =
+                    i / (double) (
+                            controlCount - 1
+                    );
+
+            double signed =
+                    lerp(
+                            -1.0,
+                            1.0,
+                            t
+                    );
+
+            double along =
+                    signed
+                            * halfLength;
+
+            double arc =
+                    (
+                            1.0
+                                    - signed * signed
+                    ) * bulge;
+
+            double middleEnvelope =
+                    Math.max(
+                            0.0,
+                            1.0
+                                    - Math.abs(signed)
+                                    * 1.2
+                    );
+
+            double middleBias =
+                    middleEnvelope
+                            * middleBiasStrength;
+
+            double jitterX =
+                    range(
+                            random,
+                            -0.0065,
+                            0.0065
+                    ) * scale;
+
+            double jitterZ =
+                    range(
+                            random,
+                            -0.0065,
+                            0.0065
+                    ) * scale;
+
+            controls.add(
+                    new GeoPoint(
+                            centerX
+                                    + axisX * along
+                                    + crossX * arc
+                                    + inwardX * middleBias
+                                    + jitterX,
+
+                            centerZ
+                                    + axisZ * along
+                                    + crossZ * arc
+                                    + inwardZ * middleBias
+                                    + jitterZ
+                    )
+            );
+        }
+
+        return controls;
+    }
+
+    private static double distanceToSoundNetwork(
+            List<GeoPoint> westernRange,
+            List<List<GeoPoint>> soundPaths
+    ) {
+
+        double minimum =
+                Double.POSITIVE_INFINITY;
+
+        for (
+                List<GeoPoint> soundPath :
+                soundPaths
+        ) {
+
+            minimum =
+                    Math.min(
+                            minimum,
+                            distanceBetweenPolylines(
+                                    westernRange,
+                                    soundPath
+                            )
+                    );
+        }
+
+        return minimum;
+    }
+
+    private static double distanceBetweenPolylines(
+            List<GeoPoint> first,
+            List<GeoPoint> second
+    ) {
+
+        if (
+                first.size() < 2
+                        || second.size() < 2
+        ) {
+            return Double.POSITIVE_INFINITY;
+        }
+
+        double minimum =
+                Double.POSITIVE_INFINITY;
+
+        for (
+                int a = 0;
+                a < first.size() - 1;
+                a++
+        ) {
+
+            GeoPoint a0 =
+                    first.get(a);
+
+            GeoPoint a1 =
+                    first.get(a + 1);
+
+            /*
+             * Sampling along the first segment is sufficient here
+             * because these are short, densely controlled planner
+             * splines.
+             */
+            final int samples =
+                    8;
+
+            for (
+                    int sample = 0;
+                    sample <= samples;
+                    sample++
+            ) {
+
+                double t =
+                        sample / (double) samples;
+
+                double px =
+                        lerp(
+                                a0.x(),
+                                a1.x(),
+                                t
+                        );
+
+                double pz =
+                        lerp(
+                                a0.z(),
+                                a1.z(),
+                                t
+                        );
+
+                double distance =
+                        distanceToPolyline(
+                                px,
+                                pz,
+                                second
+                        );
+
+                minimum =
+                        Math.min(
+                                minimum,
+                                distance
+                        );
+            }
+        }
+
+        /*
+         * Also test in the opposite direction so short segments
+         * cannot slip through each other's sampling gaps.
+         */
+        for (
+                int b = 0;
+                b < second.size() - 1;
+                b++
+        ) {
+
+            GeoPoint b0 =
+                    second.get(b);
+
+            GeoPoint b1 =
+                    second.get(b + 1);
+
+            final int samples =
+                    8;
+
+            for (
+                    int sample = 0;
+                    sample <= samples;
+                    sample++
+            ) {
+
+                double t =
+                        sample / (double) samples;
+
+                double px =
+                        lerp(
+                                b0.x(),
+                                b1.x(),
+                                t
+                        );
+
+                double pz =
+                        lerp(
+                                b0.z(),
+                                b1.z(),
+                                t
+                        );
+
+                double distance =
+                        distanceToPolyline(
+                                px,
+                                pz,
+                                first
+                        );
+
+                minimum =
+                        Math.min(
+                                minimum,
+                                distance
+                        );
+            }
+        }
+
+        return minimum;
+    }
+
+    private static WesternRangePlacement createWesternRangeGuaranteed(
+            SplittableRandom random,
+            List<List<GeoPoint>> soundPaths,
+            List<GeoPoint> cascadeControls,
+            CoastlineProfile coastline,
+            double minimumSoundClearance,
+            double minimumCascadeClearance,
+            boolean preferCoastalContact
+    ) {
+
+        /*
+         * Preserve a full-size western massif whenever possible.
+         * Only shrink it if the seed genuinely has too little clean
+         * western lowland between sounds, coast and Cascades.
+         */
+        double[] scales = {
+                1.00,
+                0.92,
+                0.84,
+                0.76
+        };
+
+        double[] coastalOffsets = {
+                0.050,
+                0.062,
+                0.074,
+                0.086
+        };
+
+        double[] inlandOffsets = {
+                0.120,
+                0.145,
+                0.170,
+                0.195
+        };
+
+        /*
+         * Try the seed-selected style first.
+         */
+        WesternRangePlacement preferred =
+                searchWesternRangeSweep(
+                        random,
+                        soundPaths,
+                        cascadeControls,
+                        coastline,
+                        minimumSoundClearance,
+                        minimumCascadeClearance,
+                        preferCoastalContact,
+                        scales,
+                        preferCoastalContact
+                                ? coastalOffsets
+                                : inlandOffsets,
+                        Math.PI - 1.38,
+                        Math.PI + 1.38,
+                        181
+                );
+
+        if (preferred != null) {
+            return preferred;
+        }
+
+        /*
+         * Do not break the hard separation rules merely to preserve
+         * the cosmetic coastal/inland style choice.  If the preferred
+         * style cannot fit, try the other style at the same scales.
+         */
+        WesternRangePlacement alternate =
+                searchWesternRangeSweep(
+                        random,
+                        soundPaths,
+                        cascadeControls,
+                        coastline,
+                        minimumSoundClearance,
+                        minimumCascadeClearance,
+                        !preferCoastalContact,
+                        scales,
+                        !preferCoastalContact
+                                ? coastalOffsets
+                                : inlandOffsets,
+                        Math.PI - 1.38,
+                        Math.PI + 1.38,
+                        181
+                );
+
+        if (alternate != null) {
+            return alternate;
+        }
+
+        return createEmergencyWesternRange(
+                random,
+                soundPaths,
+                cascadeControls,
+                coastline,
+                minimumSoundClearance,
+                minimumCascadeClearance,
+                preferCoastalContact
+        );
+    }
+
+    private static WesternRangePlacement searchWesternRangeSweep(
+            SplittableRandom random,
+            List<List<GeoPoint>> soundPaths,
+            List<GeoPoint> cascadeControls,
+            CoastlineProfile coastline,
+            double minimumSoundClearance,
+            double minimumCascadeClearance,
+            boolean coastalContact,
+            double[] scales,
+            double[] inlandOffsets,
+            double minimumAngle,
+            double maximumAngle,
+            int angleSamples
+    ) {
+
+        /*
+         * A small phase prevents every fallback sweep from sampling
+         * exactly the same angular lattice relative to the radial
+         * coastline controls.
+         */
+        double phase =
+                random.nextDouble();
+
+        for (double scale : scales) {
+
+            List<GeoPoint> bestCandidate =
+                    null;
+
+            double bestScore =
+                    Double.NEGATIVE_INFINITY;
+
+            for (
+                    int i = 0;
+                    i < angleSamples;
+                    i++
+            ) {
+
+                double t =
+                        (
+                                i + phase
+                        ) / angleSamples;
+
+                double angle =
+                        lerp(
+                                minimumAngle,
+                                maximumAngle,
+                                t
+                        );
+
+                for (
+                        double inlandOffset :
+                        inlandOffsets
+                ) {
+
+                    List<GeoPoint> candidate =
+                            createWesternRangeCandidate(
+                                    random,
+                                    coastline,
+                                    angle,
+                                    inlandOffset,
+                                    scale
+                            );
+
+                    if (
+                            !isWesternRangeCandidateValid(
+                                    candidate,
+                                    coastline,
+                                    soundPaths,
+                                    cascadeControls,
+                                    scale,
+                                    coastalContact,
+                                    minimumSoundClearance,
+                                    minimumCascadeClearance
+                            )
+                    ) {
+                        continue;
+                    }
+
+                    double soundDistance =
+                            distanceToSoundNetwork(
+                                    candidate,
+                                    soundPaths
+                            );
+
+                    double cascadeDistance =
+                            distanceBetweenPolylines(
+                                    candidate,
+                                    cascadeControls
+                            );
+
+                    /*
+                     * Maximize the weaker of the two critical
+                     * separations.  We evaluate every valid candidate
+                     * at this scale instead of returning the first one,
+                     * which avoids an artificial north/south edge bias.
+                     */
+                    double score =
+                            Math.min(
+                                    soundDistance,
+                                    cascadeDistance
+                            );
+
+                    if (score > bestScore) {
+
+                        bestScore =
+                                score;
+
+                        bestCandidate =
+                                candidate;
+                    }
+                }
+            }
+
+            /*
+             * Prefer the largest scale that has any valid placement.
+             */
+            if (bestCandidate != null) {
+                return new WesternRangePlacement(
+                        bestCandidate,
+                        scale
+                );
+            }
+        }
+
+        return null;
+    }
+
+    private static WesternRangePlacement createEmergencyWesternRange(
+            SplittableRandom random,
+            List<List<GeoPoint>> soundPaths,
+            List<GeoPoint> cascadeControls,
+            CoastlineProfile coastline,
+            double minimumSoundClearance,
+            double minimumCascadeClearance,
+            boolean preferCoastalContact
+    ) {
+
+        /*
+         * Last-resort search: substantially smaller massif and nearly
+         * the whole western half of the mainland, but still NO sound
+         * overlap and NO Cascade/foothill overlap.
+         */
+        double[] emergencyScales = {
+                0.68,
+                0.58,
+                0.48,
+                0.40,
+                0.32,
+                0.24
+        };
+
+        double[] emergencyCoastalOffsets = {
+                0.038,
+                0.050,
+                0.062,
+                0.074
+        };
+
+        double[] emergencyInlandOffsets = {
+                0.095,
+                0.120,
+                0.150,
+                0.180,
+                0.215
+        };
+
+        WesternRangePlacement preferred =
+                searchWesternRangeSweep(
+                        random,
+                        soundPaths,
+                        cascadeControls,
+                        coastline,
+                        minimumSoundClearance,
+                        minimumCascadeClearance,
+                        preferCoastalContact,
+                        emergencyScales,
+                        preferCoastalContact
+                                ? emergencyCoastalOffsets
+                                : emergencyInlandOffsets,
+                        Math.PI - 1.50,
+                        Math.PI + 1.50,
+                        241
+                );
+
+        if (preferred != null) {
+            return preferred;
+        }
+
+        WesternRangePlacement alternate =
+                searchWesternRangeSweep(
+                        random,
+                        soundPaths,
+                        cascadeControls,
+                        coastline,
+                        minimumSoundClearance,
+                        minimumCascadeClearance,
+                        !preferCoastalContact,
+                        emergencyScales,
+                        !preferCoastalContact
+                                ? emergencyCoastalOffsets
+                                : emergencyInlandOffsets,
+                        Math.PI - 1.50,
+                        Math.PI + 1.50,
+                        241
+                );
+
+        if (alternate != null) {
+            return alternate;
+        }
+
+        throw new IllegalStateException(
+                "Unable to place western mountain range while preserving "
+                        + "mainland containment, sound clearance, Cascade "
+                        + "clearance, and coastline rules."
+        );
+    }
+
 }

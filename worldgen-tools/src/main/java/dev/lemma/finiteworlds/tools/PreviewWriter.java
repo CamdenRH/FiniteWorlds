@@ -1,8 +1,11 @@
 package dev.lemma.finiteworlds.tools;
 
 import dev.lemma.finiteworlds.core.WorldBlueprint;
+import dev.lemma.finiteworlds.core.geography.CascadeMorphologySample;
+import dev.lemma.finiteworlds.core.geography.CascadeMorphologySampler;
 import dev.lemma.finiteworlds.core.terrain.TerrainSampler;
 import dev.lemma.finiteworlds.core.geography.ContinentPlan;
+import dev.lemma.finiteworlds.core.geography.TerrainProvince;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -87,6 +90,68 @@ public final class PreviewWriter {
                 plan,
                 directory.resolve(
                         "mountain-uplift.png"
+                )
+        );
+
+        writeTerrainProvinces(
+                world,
+                directory.resolve(
+                        "terrain-provinces.png"
+                )
+        );
+
+        writeScalarField(
+                world,
+                directory.resolve(
+                        "base-elevation.png"
+                ),
+                -200.0,
+                220.0,
+                world::baseElevation
+        );
+
+        writeScalarField(
+                world,
+                directory.resolve(
+                        "coast-range-uplift.png"
+                ),
+                0.0,
+                130.0,
+                world::coastRangeUplift
+        );
+
+        writeScalarField(
+                world,
+                directory.resolve(
+                        "cascade-uplift.png"
+                ),
+                0.0,
+                plan.mountainSystem()
+                        .maximumUplift(),
+                world::cascadeUplift
+        );
+
+        writeCascadeMorphologyDebug(
+                world,
+                seed,
+                plan,
+                directory
+        );
+
+        writeScalarField(
+                world,
+                directory.resolve(
+                        "plateau-uplift.png"
+                ),
+                0.0,
+                90.0,
+                world::plateauUplift
+        );
+
+        writeSlope(
+                world,
+                directory.resolve(
+                        "slope.png"
                 )
         );
     }
@@ -788,11 +853,10 @@ public final class PreviewWriter {
                                 - 1.0;
 
                 double uplift =
-                        plan.mountainSystem()
-                                .upliftAt(
-                                        nx,
-                                        nz
-                                );
+                        world.cascadeUplift(
+                                x,
+                                z
+                        );
 
                 double normalized =
                         Math.min(
@@ -824,6 +888,442 @@ public final class PreviewWriter {
                 image,
                 "PNG",
                 path.toFile()
+        );
+    }
+
+    private static void writeCascadeMorphologyDebug(
+            WorldBlueprint world,
+            long seed,
+            ContinentPlan plan,
+            Path directory
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        BufferedImage envelopeImage =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        BufferedImage crestImage =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        BufferedImage ridgeImage =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        CascadeMorphologySampler sampler =
+                new CascadeMorphologySampler(
+                        seed,
+                        plan.cascadeMountainSystem()
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+
+                double nx =
+                        (
+                                (x + 0.5)
+                                        / size
+                        ) * 2.0
+                                - 1.0;
+
+                double nz =
+                        (
+                                (z + 0.5)
+                                        / size
+                        ) * 2.0
+                                - 1.0;
+
+                CascadeMorphologySample sample =
+                        world.landMask(x, z) >= 0.5f
+                                ? sampler.sample(
+                                nx,
+                                nz
+                        )
+                                : CascadeMorphologySample.empty();
+
+                int envelopeGray =
+                        clamp255(
+                                sample.envelope()
+                                        * 255.0
+                        );
+
+                int crestGray =
+                        clamp255(
+                                sample.crestStructure()
+                                        * 255.0
+                        );
+
+                int ridgeGray =
+                        clamp255(
+                                sample.ridgeRelief()
+                                        * 255.0
+                        );
+
+                envelopeImage.setRGB(
+                        x,
+                        z,
+                        (envelopeGray << 16)
+                                | (envelopeGray << 8)
+                                | envelopeGray
+                );
+
+                crestImage.setRGB(
+                        x,
+                        z,
+                        (crestGray << 16)
+                                | (crestGray << 8)
+                                | crestGray
+                );
+
+                ridgeImage.setRGB(
+                        x,
+                        z,
+                        (ridgeGray << 16)
+                                | (ridgeGray << 8)
+                                | ridgeGray
+                );
+            }
+        }
+
+        ImageIO.write(
+                envelopeImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-envelope.png"
+                ).toFile()
+        );
+
+        ImageIO.write(
+                crestImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-crest-structure.png"
+                ).toFile()
+        );
+
+        ImageIO.write(
+                ridgeImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-ridge-relief.png"
+                ).toFile()
+        );
+    }
+
+
+    private static void writeTerrainProvinces(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+
+        for (int z = 0; z < size; z++) {
+
+            for (int x = 0; x < size; x++) {
+
+                TerrainProvince province =
+                        world.terrainProvince(
+                                x,
+                                z
+                        );
+
+
+                int rgb =
+                        switch (province) {
+
+                            case OCEAN ->
+                                    rgb(
+                                            15,
+                                            45,
+                                            90
+                                    );
+
+                            case COASTAL ->
+                                    rgb(
+                                            210,
+                                            190,
+                                            120
+                                    );
+
+                            case COAST_RANGE ->
+                                    rgb(
+                                            50,
+                                            105,
+                                            60
+                                    );
+
+                            case WESTERN_LOWLAND ->
+                                    rgb(
+                                            100,
+                                            165,
+                                            90
+                                    );
+
+                            case CASCADE_FOOTHILLS ->
+                                    rgb(
+                                            145,
+                                            150,
+                                            90
+                                    );
+
+                            case CASCADE_CORE ->
+                                    rgb(
+                                            235,
+                                            235,
+                                            235
+                                    );
+
+                            case EASTERN_SLOPES ->
+                                    rgb(
+                                            190,
+                                            140,
+                                            70
+                                    );
+
+                            case INTERIOR_PLATEAU ->
+                                    rgb(
+                                            150,
+                                            105,
+                                            60
+                                    );
+                        };
+
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb
+                );
+            }
+        }
+
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeScalarField(
+            WorldBlueprint world,
+            Path path,
+            double min,
+            double max,
+            CellValue field
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+
+        for (int z = 0; z < size; z++) {
+
+            for (int x = 0; x < size; x++) {
+
+                double value =
+                        field.sample(
+                                x,
+                                z
+                        );
+
+
+                double normalized =
+                        (
+                                value - min
+                        )
+                                / (
+                                max - min
+                        );
+
+
+                int gray =
+                        clamp255(
+                                normalized
+                                        * 255.0
+                        );
+
+
+                int rgb =
+                        (gray << 16)
+                                | (gray << 8)
+                                | gray;
+
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb
+                );
+            }
+        }
+
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeSlope(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+
+        double cellSize =
+                world.config()
+                        .blocksPerCell();
+
+
+        for (int z = 1; z < size - 1; z++) {
+
+            for (int x = 1; x < size - 1; x++) {
+
+                double dx =
+                        (
+                                world.elevation(
+                                        x + 1,
+                                        z
+                                )
+                                        - world.elevation(
+                                        x - 1,
+                                        z
+                                )
+                        )
+                                / (
+                                2.0 * cellSize
+                        );
+
+
+                double dz =
+                        (
+                                world.elevation(
+                                        x,
+                                        z + 1
+                                )
+                                        - world.elevation(
+                                        x,
+                                        z - 1
+                                )
+                        )
+                                / (
+                                2.0 * cellSize
+                        );
+
+
+                double gradient =
+                        Math.sqrt(
+                                dx * dx
+                                        + dz * dz
+                        );
+
+
+                double slopeDegrees =
+                        Math.toDegrees(
+                                Math.atan(
+                                        gradient
+                                )
+                        );
+
+
+                int gray =
+                        clamp255(
+                                Math.min(
+                                        1.0,
+                                        slopeDegrees
+                                                / 45.0
+                                ) * 255.0
+                        );
+
+
+                int rgb =
+                        (gray << 16)
+                                | (gray << 8)
+                                | gray;
+
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb
+                );
+            }
+        }
+
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static int rgb(
+            int r,
+            int g,
+            int b
+    ) {
+
+        return (
+                clamp255(r) << 16
+        )
+                | (
+                clamp255(g) << 8
+        )
+                | clamp255(b);
+    }
+
+
+    @FunctionalInterface
+    private interface CellValue {
+
+        double sample(
+                int x,
+                int z
         );
     }
 }

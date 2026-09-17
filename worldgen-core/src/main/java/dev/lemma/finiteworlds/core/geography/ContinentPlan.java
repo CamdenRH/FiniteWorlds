@@ -20,13 +20,15 @@ public final class ContinentPlan {
     private final List<GeoShape> landShapes;
     private final List<GeoShape> cutoutShapes;
 
-    private final MountainSystem mountainSystem;
+    private final MountainSystem cascadeMountainSystem;
+    private final MountainSystem westernMountainSystem;
 
 
     public ContinentPlan(
             List<GeoShape> landShapes,
             List<GeoShape> cutoutShapes,
-            MountainSystem mountainSystem
+            MountainSystem cascadeMountainSystem,
+            MountainSystem westernMountainSystem
     ) {
 
         this.landShapes =
@@ -39,8 +41,11 @@ public final class ContinentPlan {
                         cutoutShapes
                 );
 
-        this.mountainSystem =
-                mountainSystem;
+        this.cascadeMountainSystem =
+                cascadeMountainSystem;
+
+        this.westernMountainSystem =
+                westernMountainSystem;
     }
 
 
@@ -138,8 +143,19 @@ public final class ContinentPlan {
     }
 
 
+    /*
+     * Legacy alias so older code still works if needed.
+     */
     public MountainSystem mountainSystem() {
-        return mountainSystem;
+        return cascadeMountainSystem;
+    }
+
+    public MountainSystem cascadeMountainSystem() {
+        return cascadeMountainSystem;
+    }
+
+    public MountainSystem westernMountainSystem() {
+        return westernMountainSystem;
     }
 
 

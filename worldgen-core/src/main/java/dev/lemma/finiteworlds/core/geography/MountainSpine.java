@@ -6,6 +6,8 @@ import java.util.List;
 public final class MountainSpine {
 
     private final List<GeoPoint> points;
+    private final double[] cumulativeLength;
+    private final double totalLength;
 
     public MountainSpine(
             List<GeoPoint> controlPoints,
@@ -23,12 +25,45 @@ public final class MountainSpine {
                         controlPoints,
                         samplesPerSegment
                 );
+
+        this.cumulativeLength =
+                new double[points.size()];
+
+        double runningLength =
+                0.0;
+
+        for (
+                int i = 1;
+                i < points.size();
+                i++
+        ) {
+            GeoPoint previous =
+                    points.get(i - 1);
+
+            GeoPoint current =
+                    points.get(i);
+
+            runningLength +=
+                    Math.hypot(
+                            current.x() - previous.x(),
+                            current.z() - previous.z()
+                    );
+
+            cumulativeLength[i] =
+                    runningLength;
+        }
+
+        this.totalLength =
+                runningLength;
     }
 
     public List<GeoPoint> points() {
         return points;
     }
 
+    public double totalLength() {
+        return totalLength;
+    }
 
     /*
      * Returns the shortest normalized-coordinate
@@ -40,8 +75,64 @@ public final class MountainSpine {
             double z
     ) {
 
-        double minimum =
+        return Math.abs(
+                project(
+                        x,
+                        z
+                ).signedDistance()
+        );
+    }
+
+    /*
+     * Signed distance to the sampled spine.
+     *
+     * Positive = western side of the range.
+     * Negative = eastern side.
+     *
+     * This relies on Cascadia's control points being
+     * ordered generally south -> north, which they are
+     * in ContinentPlanner.
+     */
+    public double signedDistanceTo(
+            double x,
+            double z
+    ) {
+
+        return project(
+                x,
+                z
+        ).signedDistance();
+    }
+
+    /**
+     * Project a point onto the sampled spine and return both its signed
+     * cross-range distance and its position along the range.
+     */
+    public MountainProjection project(
+            double x,
+            double z
+    ) {
+
+        double minimumSquared =
                 Double.POSITIVE_INFINITY;
+
+        double bestSignedDistance =
+                0.0;
+
+        double bestProgress =
+                0.0;
+
+        double bestClosestX =
+                points.getFirst().x();
+
+        double bestClosestZ =
+                points.getFirst().z();
+
+        double bestTangentX =
+                0.0;
+
+        double bestTangentZ =
+                1.0;
 
         for (
                 int i = 0;
@@ -55,100 +146,119 @@ public final class MountainSpine {
             GeoPoint b =
                     points.get(i + 1);
 
-            double distance =
-                    distanceToSegment(
-                            x,
-                            z,
-                            a.x(),
-                            a.z(),
-                            b.x(),
-                            b.z()
-                    );
+            double abX =
+                    b.x() - a.x();
 
-            minimum =
-                    Math.min(
-                            minimum,
-                            distance
-                    );
-        }
+            double abZ =
+                    b.z() - a.z();
 
-        return minimum;
-    }
+            double apX =
+                    x - a.x();
 
+            double apZ =
+                    z - a.z();
 
-    private static double distanceToSegment(
-            double px,
-            double pz,
-            double ax,
-            double az,
-            double bx,
-            double bz
-    ) {
+            double abLengthSquared =
+                    abX * abX
+                            + abZ * abZ;
 
-        double abX =
-                bx - ax;
+            double t;
 
-        double abZ =
-                bz - az;
+            if (abLengthSquared <= 1.0e-12) {
+                t = 0.0;
+            } else {
 
-        double apX =
-                px - ax;
-
-        double apZ =
-                pz - az;
-
-        double abLengthSquared =
-                abX * abX
-                        + abZ * abZ;
-
-        if (abLengthSquared == 0.0) {
-
-            double dx =
-                    px - ax;
-
-            double dz =
-                    pz - az;
-
-            return Math.sqrt(
-                    dx * dx
-                            + dz * dz
-            );
-        }
-
-        double t =
-                (
-                        apX * abX
-                                + apZ * abZ
-                )
-                        / abLengthSquared;
-
-        t =
-                Math.max(
-                        0.0,
-                        Math.min(
-                                1.0,
-                                t
+                t =
+                        (
+                                apX * abX
+                                        + apZ * abZ
                         )
-                );
+                                / abLengthSquared;
 
-        double closestX =
-                ax + abX * t;
+                t =
+                        Math.max(
+                                0.0,
+                                Math.min(
+                                        1.0,
+                                        t
+                                )
+                        );
+            }
 
-        double closestZ =
-                az + abZ * t;
+            double closestX =
+                    a.x() + abX * t;
 
-        double dx =
-                px - closestX;
+            double closestZ =
+                    a.z() + abZ * t;
 
-        double dz =
-                pz - closestZ;
+            double offsetX =
+                    x - closestX;
 
-        return Math.sqrt(
-                dx * dx
-                        + dz * dz
+            double offsetZ =
+                    z - closestZ;
+
+            double distanceSquared =
+                    offsetX * offsetX
+                            + offsetZ * offsetZ;
+
+            if (distanceSquared < minimumSquared) {
+
+                minimumSquared =
+                        distanceSquared;
+
+                double cross =
+                        abX * offsetZ
+                                - abZ * offsetX;
+
+                double sign =
+                        cross >= 0.0
+                                ? 1.0
+                                : -1.0;
+
+                bestSignedDistance =
+                        Math.sqrt(
+                                distanceSquared
+                        ) * sign;
+
+                double segmentLength =
+                        Math.sqrt(
+                                abLengthSquared
+                        );
+
+                double alongLength =
+                        cumulativeLength[i]
+                                + segmentLength * t;
+
+                bestProgress =
+                        totalLength > 1.0e-12
+                                ? alongLength / totalLength
+                                : 0.0;
+
+                bestClosestX =
+                        closestX;
+
+                bestClosestZ =
+                        closestZ;
+
+                if (segmentLength > 1.0e-12) {
+                    bestTangentX =
+                            abX / segmentLength;
+
+                    bestTangentZ =
+                            abZ / segmentLength;
+                }
+            }
+        }
+
+        return new MountainProjection(
+                bestSignedDistance,
+                bestProgress,
+                bestClosestX,
+                bestClosestZ,
+                bestTangentX,
+                bestTangentZ
         );
     }
-
 
     private static List<GeoPoint> sampleCatmullRom(
             List<GeoPoint> controls,
@@ -233,7 +343,6 @@ public final class MountainSpine {
                 result
         );
     }
-
 
     private static double catmullRom(
             double p0,
