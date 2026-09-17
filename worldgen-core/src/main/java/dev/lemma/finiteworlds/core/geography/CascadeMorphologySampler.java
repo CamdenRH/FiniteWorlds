@@ -10,12 +10,14 @@ import java.util.SplittableRandom;
 /**
  * Cascade-specific macro morphology.
  *
- * MountainSystem owns where the Cascade corridor exists.  This sampler owns
+ * MountainSystem owns where the Cascade corridor exists. This sampler owns
  * what the terrain looks like inside that corridor:
  *
  *  - a broad asymmetric mountain envelope,
- *  - clustered high crest sections separated by lower saddles,
- *  - secondary ridge spurs projecting away from the crest.
+ *  - 3-5 distinct high mountain massifs separated by lower passes,
+ *  - a smaller hierarchy of major ridge systems,
+ *  - secondary ridge branches that emerge from those major systems,
+ *  - longer / broader western ridges and shorter / steeper eastern ridges.
  *
  * Volcanoes and explicit glacial / drainage erosion are intentionally left
  * for later passes so the basic mountain body can be evaluated first.
@@ -30,7 +32,8 @@ public final class CascadeMorphologySampler {
     private final ValueNoise ridgeTextureNoise;
     private final ValueNoise passNoise;
 
-    private final List<RidgeSpur> ridgeSpurs;
+    private final List<Massif> massifs;
+    private final List<RidgePath> ridgeSpurs;
 
     public CascadeMorphologySampler(
             long worldSeed,
@@ -79,6 +82,14 @@ public final class CascadeMorphologySampler {
                         )
                 );
 
+        this.massifs =
+                createMassifs(
+                        SeedUtil.derive(
+                                morphologySeed,
+                                "massifs"
+                        )
+                );
+
         this.ridgeSpurs =
                 createRidgeSpurs(
                         SeedUtil.derive(
@@ -116,7 +127,7 @@ public final class CascadeMorphologySampler {
     }
 
     /**
-     * Fast path used by the generator.  PhysiographySampler already knows
+     * Fast path used by the generator. PhysiographySampler already knows
      * the closest spine projection, so the expensive polyline scan is not
      * repeated for every blueprint cell.
      */
@@ -146,8 +157,9 @@ public final class CascadeMorphologySampler {
          * BROAD ASYMMETRIC ENVELOPE
          * =========================================================
          *
+         * Positive signed distance is west of the Cascade spine.
          * West side: broader and more gradual.
-         * East side: somewhat narrower and steeper.
+         * East side: narrower and steeper.
          */
         double envelope;
 
@@ -176,28 +188,39 @@ public final class CascadeMorphologySampler {
 
         /*
          * =========================================================
-         * BROKEN CREST / MOUNTAIN CLUSTERS
+         * DISTINCT CREST MASSIFS + SADDLES
          * =========================================================
          *
-         * The low-frequency field runs along the actual sampled spine,
-         * producing alternating high mountain groups and lower saddles.
+         * Instead of relying on one continuous low-frequency noise ribbon,
+         * the range now owns 3-5 explicit seeded high-mountain groups.
+         * The field falls nearly to zero between those groups, creating
+         * recognizable lower passes / saddles.
          */
-        double clusterSignal =
+        double clusterStrength =
+                massifStrengthAt(
+                        arcPosition
+                );
+
+        double clusterTextureSignal =
                 clusterNoise.fbm(
-                        arcPosition * 3.4 + 17.0,
+                        arcPosition * 6.2 + 17.0,
                         11.0,
-                        3,
+                        2,
                         2.0,
                         0.5
                 );
 
-        double clusterStrength =
-                0.50
-                        + 0.50
-                        * smoothstep(
-                        -0.50,
-                        0.48,
-                        clusterSignal
+        double clusterTexture =
+                0.92
+                        + 0.08
+                        * clamp01(
+                        clusterTextureSignal * 0.5 + 0.5
+                );
+
+        clusterStrength =
+                clamp01(
+                        clusterStrength
+                                * clusterTexture
                 );
 
         double crestEnvelope =
@@ -218,50 +241,79 @@ public final class CascadeMorphologySampler {
                 );
 
         double crestDetail =
-                0.84
-                        + 0.16
+                0.82
+                        + 0.18
                         * clamp01(
                         crestDetailSignal * 0.5 + 0.5
                 );
 
+        /*
+         * The explicit massif field is the primary source of saddles.
+         * This smaller noise pass adds an occasional local notch inside a
+         * massif without turning the crest back into a continuous ribbon.
+         */
         double passSignal =
                 passNoise.fbm(
-                        arcPosition * 5.8 + 43.0,
+                        arcPosition * 8.0 + 43.0,
                         -7.0,
-                        3,
+                        2,
                         2.0,
                         0.5
                 );
 
-        double passSuppression =
+        double normalizedPassSignal =
+                clamp01(
+                        passSignal * 0.5 + 0.5
+                );
+
+        double localPass =
                 smoothstep(
-                        0.14,
-                        0.50,
-                        passSignal
+                        0.68,
+                        0.88,
+                        normalizedPassSignal
+                )
+                        * clusterStrength;
+
+        double saddleSuppression =
+                Math.pow(
+                        1.0 - clusterStrength,
+                        1.15
+                );
+
+        double passSuppression =
+                clamp01(
+                        saddleSuppression * 0.82
+                                + localPass * 0.30
                 );
 
         double passMultiplier =
                 1.0
                         - passSuppression
-                        * 0.44;
+                        * 0.62;
+
+        double crestClusterFactor =
+                Math.pow(
+                        clusterStrength,
+                        0.82
+                );
 
         double crestStructure =
                 clamp01(
                         crestEnvelope
-                                * clusterStrength
+                                * crestClusterFactor
                                 * crestDetail
                                 * passMultiplier
                 );
 
         /*
          * =========================================================
-         * SECONDARY RIDGE SPURS
+         * HIERARCHICAL SECONDARY RIDGE SYSTEMS
          * =========================================================
          *
-         * These are explicit elongated lobes tied to positions along the
-         * Cascade spine.  Each ridge extends to only one side, bends as it
-         * leaves the crest, and fades before the outer edge.  This avoids
-         * the horizontal banding produced by anisotropic noise alone.
+         * Major ridges are concentrated around the seeded massifs. Each
+         * major ridge may spawn one or two weaker branches partway down its
+         * flank. Ridge paths meander as they move away from the crest and
+         * narrow toward their tips rather than broadening into uniform ribs.
          */
         double ridgeRelief =
                 ridgeSpurField(
@@ -285,12 +337,25 @@ public final class CascadeMorphologySampler {
                         ridgeTexture * 0.5 + 0.5
                 );
 
+        /*
+         * Strong massifs support denser / stronger ridge systems. Saddles
+         * still retain a little relief so the range does not look cut into
+         * totally independent islands of terrain.
+         */
+        double ridgeClusterMultiplier =
+                0.58
+                        + 0.42
+                        * Math.pow(
+                        clusterStrength,
+                        0.75
+                );
+
         ridgeRelief =
                 clamp01(
                         ridgeRelief
                                 * envelope
                                 * ridgeTexture
-                                * (0.74 + clusterStrength * 0.26)
+                                * ridgeClusterMultiplier
                 );
 
         /*
@@ -298,9 +363,9 @@ public final class CascadeMorphologySampler {
          * FINAL UPLIFT
          * =========================================================
          *
-         * Keep the existing 190-ish macro vertical budget.  The broad
-         * body carries the range continuously, the crest provides the main
-         * alpine height, and the ridge spurs add structured relief.
+         * Preserve the same overall vertical budget. The continuous broad
+         * body prevents the Cascades from breaking into disconnected hills;
+         * the explicit massifs now control most of the alpine crest height.
          */
         double maximumUplift =
                 cascadeSystem.maximumUplift();
@@ -337,6 +402,168 @@ public final class CascadeMorphologySampler {
         );
     }
 
+    /*
+     * =============================================================
+     * MASSIF FIELD
+     * =============================================================
+     */
+
+    private double massifStrengthAt(
+            double arcPosition
+    ) {
+        double result =
+                0.0;
+
+        for (Massif massif : massifs) {
+            double normalizedDistance =
+                    Math.abs(
+                            arcPosition
+                                    - massif.centerArc()
+                    ) / massif.halfWidth();
+
+            if (normalizedDistance >= 1.0) {
+                continue;
+            }
+
+            /*
+             * Compact cosine lobe. It reaches exactly zero at the edge of
+             * the massif instead of leaving a low continuous pedestal along
+             * the entire crest.
+             */
+            double influence =
+                    0.5
+                            + 0.5
+                            * Math.cos(
+                            normalizedDistance
+                                    * Math.PI
+                    );
+
+            influence =
+                    Math.pow(
+                            influence,
+                            0.82
+                    );
+
+            result =
+                    Math.max(
+                            result,
+                            influence
+                                    * massif.strength()
+                    );
+        }
+
+        return clamp01(
+                result
+        );
+    }
+
+    private List<Massif> createMassifs(
+            long seed
+    ) {
+        SplittableRandom random =
+                new SplittableRandom(
+                        seed
+                );
+
+        int massifCount =
+                3 + random.nextInt(3);
+
+        int dominantIndex =
+                random.nextInt(
+                        massifCount
+                );
+
+        List<Massif> result =
+                new ArrayList<>();
+
+        for (int i = 0; i < massifCount; i++) {
+            double baseProgress =
+                    (i + 0.5)
+                            / massifCount;
+
+            double centerProgress =
+                    clamp(
+                            baseProgress
+                                    + range(
+                                    random,
+                                    -0.040,
+                                    0.040
+                            ),
+                            0.07,
+                            0.93
+                    );
+
+            /*
+             * Slightly narrower individual groups when there are more of
+             * them, preserving visible saddles for both 3- and 5-massif
+             * seeds.
+             */
+            double halfWidthProgress =
+                    0.045
+                            + 0.12
+                            / massifCount
+                            + range(
+                            random,
+                            -0.010,
+                            0.012
+                    );
+
+            halfWidthProgress =
+                    clamp(
+                            halfWidthProgress,
+                            0.060,
+                            0.102
+                    );
+
+            double strength =
+                    range(
+                            random,
+                            0.78,
+                            0.98
+                    );
+
+            if (i == dominantIndex) {
+                strength =
+                        Math.min(
+                                1.0,
+                                strength + 0.10
+                        );
+            }
+
+            result.add(
+                    new Massif(
+                            centerProgress
+                                    * spineLength,
+                            halfWidthProgress
+                                    * spineLength,
+                            strength
+                    )
+            );
+        }
+
+        return List.copyOf(
+                result
+        );
+    }
+
+    /*
+     * =============================================================
+     * RIDGE FIELD
+     * =============================================================
+     *
+     * Ridges are explicit 2-D paths in Cascade-local coordinates:
+     *
+     *   outward = perpendicular distance away from the Cascade spine
+     *   arc     = distance along the Cascade spine
+     *
+     * This is intentionally different from the previous formulation, where
+     * outward distance was the independent variable and arc position was only
+     * a small drift / curvature offset. That older model naturally produced
+     * mostly east-west ribs. The path model below allows a ridge to spend a
+     * substantial portion of its run moving north/south before curving back
+     * outward, while still guaranteeing that it descends away from the crest.
+     */
+
     private double ridgeSpurField(
             double signedDistance,
             double arcPosition
@@ -344,82 +571,121 @@ public final class CascadeMorphologySampler {
         double result =
                 0.0;
 
-        for (RidgeSpur spur : ridgeSpurs) {
-
+        for (RidgePath ridge : ridgeSpurs) {
             double outwardDistance =
                     signedDistance
-                            * spur.side();
+                            * ridge.side();
 
+            double padding =
+                    ridge.maximumWidth()
+                            * 1.10;
+
+            /*
+             * Cheap bounding-box rejection is important here. Preview maps
+             * may sample this method millions of times, while each ridge is a
+             * short polyline with several segments.
+             */
             if (
-                    outwardDistance < -0.020
-                            || outwardDistance > spur.length()
+                    outwardDistance < ridge.minimumOutward() - padding
+                            || outwardDistance > ridge.maximumOutward() + padding
+                            || arcPosition < ridge.minimumArc() - padding
+                            || arcPosition > ridge.maximumArc() + padding
             ) {
                 continue;
             }
 
-            double outwardT =
-                    clamp01(
-                            Math.max(
-                                    0.0,
-                                    outwardDistance
-                            )
-                                    / spur.length()
+            PathDistance nearest =
+                    closestPointOnPath(
+                            ridge,
+                            outwardDistance,
+                            arcPosition
                     );
 
-            double bentCenter =
-                    spur.centerArc()
-                            + spur.bend()
-                            * outwardDistance
-                            + spur.curve()
-                            * outwardDistance
-                            * outwardDistance
-                            * spur.side();
+            if (nearest == null) {
+                continue;
+            }
+
+            double pathT =
+                    nearest.progress();
+
+            double widthT =
+                    smoothstep(
+                            0.0,
+                            1.0,
+                            pathT
+                    );
 
             double width =
-                    spur.width()
-                            * lerp(
-                            0.78,
-                            1.30,
-                            outwardT
+                    lerp(
+                            ridge.startWidth(),
+                            ridge.endWidth(),
+                            widthT
                     );
 
-            double alongDistance =
-                    Math.abs(
-                            arcPosition
-                                    - bentCenter
+            /*
+             * A subtle width pulse prevents perfectly uniform capsules while
+             * remaining much smoother than high-frequency coastline noise.
+             */
+            double widthVariation =
+                    1.0
+                            + Math.sin(
+                            pathT
+                                    * Math.PI
+                                    * ridge.widthWaveCount()
+                                    + ridge.widthPhase()
+                    ) * 0.10
+                            * Math.sin(
+                            pathT * Math.PI
                     );
 
-            double alongEnvelope =
+            width =
+                    Math.max(
+                            0.0032,
+                            width * widthVariation
+                    );
+
+            double distance =
+                    Math.sqrt(
+                            nearest.distanceSquared()
+                    );
+
+            double crossSection =
                     1.0
                             - smoothstep(
-                            width * 0.28,
+                            width * 0.22,
                             width,
-                            alongDistance
+                            distance
                     );
 
-            double innerConnection =
+            /*
+             * Major ridges blend quickly into the crest. Secondary branches
+             * receive a slightly longer root fade so they read as daughters
+             * of the parent ridge rather than independent parallel ribs.
+             */
+            double rootFade =
                     smoothstep(
-                            -0.020,
-                            0.008,
-                            outwardDistance
+                            0.0,
+                            ridge.secondary()
+                                    ? 0.060
+                                    : 0.028,
+                            pathT
                     );
 
-            double outerFade =
+            double tipFade =
                     1.0
                             - smoothstep(
-                            spur.length() * 0.70,
-                            spur.length(),
-                            Math.max(
-                                    0.0,
-                                    outwardDistance
-                            )
+                            ridge.secondary()
+                                    ? 0.68
+                                    : 0.73,
+                            1.0,
+                            pathT
                     );
 
             double contribution =
-                    spur.strength()
-                            * alongEnvelope
-                            * innerConnection
-                            * outerFade;
+                    ridge.strength()
+                            * crossSection
+                            * rootFade
+                            * tipFade;
 
             result =
                     Math.max(
@@ -433,7 +699,98 @@ public final class CascadeMorphologySampler {
         );
     }
 
-    private List<RidgeSpur> createRidgeSpurs(
+    private static PathDistance closestPointOnPath(
+            RidgePath ridge,
+            double outward,
+            double arc
+    ) {
+        List<RidgeNode> nodes =
+                ridge.nodes();
+
+        if (nodes.size() < 2) {
+            return null;
+        }
+
+        double bestDistanceSquared =
+                Double.POSITIVE_INFINITY;
+
+        double bestProgress =
+                0.0;
+
+        for (int i = 0; i < nodes.size() - 1; i++) {
+            RidgeNode a =
+                    nodes.get(i);
+
+            RidgeNode b =
+                    nodes.get(i + 1);
+
+            double dx =
+                    b.outward()
+                            - a.outward();
+
+            double dy =
+                    b.arc()
+                            - a.arc();
+
+            double lengthSquared =
+                    dx * dx
+                            + dy * dy;
+
+            if (lengthSquared <= 1.0e-12) {
+                continue;
+            }
+
+            double segmentT =
+                    clamp01(
+                            ((outward - a.outward()) * dx
+                                    + (arc - a.arc()) * dy)
+                                    / lengthSquared
+                    );
+
+            double closestOutward =
+                    a.outward()
+                            + dx * segmentT;
+
+            double closestArc =
+                    a.arc()
+                            + dy * segmentT;
+
+            double distanceOutward =
+                    outward
+                            - closestOutward;
+
+            double distanceArc =
+                    arc
+                            - closestArc;
+
+            double distanceSquared =
+                    distanceOutward * distanceOutward
+                            + distanceArc * distanceArc;
+
+            if (distanceSquared < bestDistanceSquared) {
+                bestDistanceSquared =
+                        distanceSquared;
+
+                bestProgress =
+                        lerp(
+                                a.progress(),
+                                b.progress(),
+                                segmentT
+                        );
+            }
+        }
+
+        if (!Double.isFinite(bestDistanceSquared)) {
+            return null;
+        }
+
+        return new PathDistance(
+                bestDistanceSquared,
+                bestProgress
+        );
+    }
+
+    private List<RidgePath> createRidgeSpurs(
             long seed
     ) {
         SplittableRandom random =
@@ -441,114 +798,63 @@ public final class CascadeMorphologySampler {
                         seed
                 );
 
-        List<RidgeSpur> result =
+        List<RidgePath> result =
                 new ArrayList<>();
 
         /*
-         * Generate both west- and east-projecting ridges so neither flank
-         * becomes featureless.  Quasi-even placement prevents accidental
-         * giant empty sections while jitter keeps the pattern non-periodic.
+         * Seven to eleven major ridges per side is intentionally denser than
+         * the previous pass. The hierarchy prevents that greater count from
+         * becoming another evenly spaced comb: roots remain massif-driven,
+         * headings vary widely, and only some ridges receive branches.
          */
-        int ridgesPerSide =
-                13;
-
         for (int sideIndex = 0; sideIndex < 2; sideIndex++) {
-
             double side =
                     sideIndex == 0
                             ? 1.0
                             : -1.0;
 
-            for (int i = 0; i < ridgesPerSide; i++) {
+            int majorCount =
+                    7 + random.nextInt(5);
 
-                double progress =
-                        (
-                                i
-                                        + 0.20
-                                        + random.nextDouble() * 0.60
-                        ) / ridgesPerSide;
+            List<Massif> assignments =
+                    new ArrayList<>();
 
-                double centerArc =
-                        progress
-                                * spineLength;
+            for (
+                    int i = 0;
+                    i < massifs.size()
+                            && assignments.size() < majorCount;
+                    i++
+            ) {
+                assignments.add(
+                        massifs.get(i)
+                );
+            }
 
-                boolean major =
-                        random.nextDouble() < 0.24;
-
-                double length;
-
-                if (side > 0.0) {
-                    length =
-                            major
-                                    ? range(
-                                    random,
-                                    0.125,
-                                    0.170
-                            )
-                                    : range(
-                                    random,
-                                    0.080,
-                                    0.135
-                            );
-                } else {
-                    length =
-                            major
-                                    ? range(
-                                    random,
-                                    0.100,
-                                    0.140
-                            )
-                                    : range(
-                                    random,
-                                    0.065,
-                                    0.112
-                            );
-                }
-
-                double width =
-                        major
-                                ? range(
-                                random,
-                                0.020,
-                                0.034
+            while (assignments.size() < majorCount) {
+                assignments.add(
+                        chooseWeightedMassif(
+                                random
                         )
-                                : range(
-                                random,
-                                0.012,
-                                0.026
-                        );
+                );
+            }
 
-                double strength =
-                        major
-                                ? range(
+            for (Massif massif : assignments) {
+                RidgePath major =
+                        createMajorRidge(
                                 random,
-                                0.72,
-                                1.00
-                        )
-                                : range(
-                                random,
-                                0.46,
-                                0.82
+                                side,
+                                massif
                         );
 
                 result.add(
-                        new RidgeSpur(
-                                centerArc,
-                                side,
-                                length,
-                                width,
-                                strength,
-                                range(
-                                        random,
-                                        -0.32,
-                                        0.32
-                                ),
-                                range(
-                                        random,
-                                        -0.90,
-                                        0.90
-                                )
-                        )
+                        major
+                );
+
+                addSecondaryBranches(
+                        result,
+                        random,
+                        major,
+                        massif
                 );
             }
         }
@@ -556,6 +862,665 @@ public final class CascadeMorphologySampler {
         return List.copyOf(
                 result
         );
+    }
+
+    private Massif chooseWeightedMassif(
+            SplittableRandom random
+    ) {
+        double totalWeight =
+                0.0;
+
+        for (Massif massif : massifs) {
+            totalWeight +=
+                    massif.strength()
+                            * massif.halfWidth();
+        }
+
+        double target =
+                random.nextDouble()
+                        * totalWeight;
+
+        double running =
+                0.0;
+
+        for (Massif massif : massifs) {
+            running +=
+                    massif.strength()
+                            * massif.halfWidth();
+
+            if (running >= target) {
+                return massif;
+            }
+        }
+
+        return massifs.getLast();
+    }
+
+    private RidgePath createMajorRidge(
+            SplittableRandom random,
+            double side,
+            Massif massif
+    ) {
+        double centerOffset =
+                triangular(
+                        random
+                )
+                        * massif.halfWidth()
+                        * 0.92;
+
+        double rootArc =
+                clamp(
+                        massif.centerArc()
+                                + centerOffset,
+                        spineLength * 0.035,
+                        spineLength * 0.965
+                );
+
+        double localMassifStrength =
+                Math.max(
+                        0.45,
+                        massifStrengthAt(
+                                rootArc
+                        )
+                );
+
+        double pathLength;
+        double startWidth;
+        int segmentCount;
+
+        if (side > 0.0) {
+            /* West: longer, broader ridges into the lowlands. */
+            pathLength =
+                    range(
+                            random,
+                            0.124,
+                            0.205
+                    );
+
+            startWidth =
+                    range(
+                            random,
+                            0.018,
+                            0.030
+                    );
+
+            segmentCount =
+                    7 + random.nextInt(3);
+        } else {
+            /* East: shorter, tighter ridges into the plateau. */
+            pathLength =
+                    range(
+                            random,
+                            0.076,
+                            0.132
+                    );
+
+            startWidth =
+                    range(
+                            random,
+                            0.014,
+                            0.024
+                    );
+
+            segmentCount =
+                    6 + random.nextInt(3);
+        }
+
+        double endWidth =
+                startWidth
+                        * range(
+                        random,
+                        0.38,
+                        0.64
+                );
+
+        double strength =
+                range(
+                        random,
+                        0.66,
+                        1.00
+                )
+                        * (
+                        0.70
+                                + localMassifStrength
+                                * 0.30
+                );
+
+        if (side < 0.0) {
+            strength *=
+                    range(
+                            random,
+                            0.80,
+                            0.95
+                    );
+        }
+
+        /*
+         * Heading is measured from the outward axis:
+         *
+         *      0 rad  = directly west/east away from the crest
+         *     +/-pi/2 = parallel to the Cascade spine
+         *
+         * The previous distribution still produced too many near-perpendicular
+         * ridges. The new hierarchy deliberately favors strong oblique runs,
+         * with a smaller set of near along-range sweepers. Only about one
+         * fifth of the ridges now begin in the moderate/perpendicular family.
+         */
+        double headingRoll =
+                random.nextDouble();
+
+        double headingSign =
+                random.nextBoolean()
+                        ? 1.0
+                        : -1.0;
+
+        double initialHeading;
+
+        if (headingRoll < 0.18) {
+            /* Near along-range sweepers. */
+            initialHeading =
+                    headingSign
+                            * range(
+                            random,
+                            Math.toRadians(68.0),
+                            Math.toRadians(82.0)
+                    );
+        } else if (headingRoll < 0.78) {
+            /* Dominant population: strongly oblique ridges. */
+            initialHeading =
+                    headingSign
+                            * range(
+                            random,
+                            Math.toRadians(40.0),
+                            Math.toRadians(68.0)
+                    );
+        } else {
+            /* Minority population retaining some outward-facing ridges. */
+            initialHeading =
+                    triangular(
+                            random
+                    )
+                            * Math.toRadians(38.0);
+        }
+
+        return buildRidgePath(
+                random,
+                side,
+                0.0,
+                rootArc,
+                pathLength,
+                initialHeading,
+                segmentCount,
+                startWidth,
+                endWidth,
+                strength,
+                range(
+                        random,
+                        1.1,
+                        2.3
+                ),
+                random.nextDouble()
+                        * Math.PI
+                        * 2.0,
+                false,
+                range(
+                        random,
+                        0.055,
+                        0.105
+                ),
+                range(
+                        random,
+                        0.004,
+                        0.014
+                )
+        );
+    }
+
+    private void addSecondaryBranches(
+            List<RidgePath> result,
+            SplittableRandom random,
+            RidgePath parent,
+            Massif massif
+    ) {
+        double massifStrength =
+                massif.strength();
+
+        int branchCount =
+                0;
+
+        if (
+                random.nextDouble()
+                        < 0.34
+                        + massifStrength * 0.34
+        ) {
+            branchCount++;
+        }
+
+        if (
+                random.nextDouble()
+                        < 0.04
+                        + massifStrength * 0.13
+        ) {
+            branchCount++;
+        }
+
+        for (int branch = 0; branch < branchCount; branch++) {
+            double parentT =
+                    range(
+                            random,
+                            0.30,
+                            0.72
+                    );
+
+            RidgePoint branchStart =
+                    pointOnPath(
+                            parent,
+                            parentT
+                    );
+
+            double parentHeading =
+                    headingOnPath(
+                            parent,
+                            parentT
+                    );
+
+            double divergenceDirection =
+                    random.nextBoolean()
+                            ? 1.0
+                            : -1.0;
+
+            double branchHeading =
+                    parentHeading
+                            + divergenceDirection
+                            * range(
+                            random,
+                            Math.toRadians(24.0),
+                            Math.toRadians(48.0)
+                    );
+
+            branchHeading =
+                    clamp(
+                            branchHeading,
+                            Math.toRadians(-82.0),
+                            Math.toRadians(82.0)
+                    );
+
+            double branchLength;
+            int segmentCount;
+
+            if (parent.side() > 0.0) {
+                branchLength =
+                        range(
+                                random,
+                                0.046,
+                                0.096
+                        );
+
+                segmentCount =
+                        4 + random.nextInt(3);
+            } else {
+                branchLength =
+                        range(
+                                random,
+                                0.034,
+                                0.074
+                        );
+
+                segmentCount =
+                        4 + random.nextInt(2);
+            }
+
+            double parentWidth =
+                    widthAtProgress(
+                            parent,
+                            parentT
+                    );
+
+            double branchStartWidth =
+                    parentWidth
+                            * range(
+                            random,
+                            0.50,
+                            0.70
+                    );
+
+            double branchEndWidth =
+                    branchStartWidth
+                            * range(
+                            random,
+                            0.38,
+                            0.64
+                    );
+
+            RidgePath child =
+                    buildRidgePath(
+                            random,
+                            parent.side(),
+                            branchStart.outward(),
+                            branchStart.arc(),
+                            branchLength,
+                            branchHeading,
+                            segmentCount,
+                            branchStartWidth,
+                            branchEndWidth,
+                            parent.strength()
+                                    * range(
+                                    random,
+                                    0.42,
+                                    0.64
+                            ),
+                            range(
+                                    random,
+                                    1.1,
+                                    2.5
+                            ),
+                            random.nextDouble()
+                                    * Math.PI
+                                    * 2.0,
+                            true,
+                            range(
+                                    random,
+                                    0.075,
+                                    0.145
+                            ),
+                            range(
+                                    random,
+                                    0.004,
+                                    0.016
+                            )
+                    );
+
+            result.add(
+                    child
+            );
+        }
+    }
+
+    private RidgePath buildRidgePath(
+            SplittableRandom random,
+            double side,
+            double startOutward,
+            double startArc,
+            double pathLength,
+            double initialHeading,
+            int segmentCount,
+            double startWidth,
+            double endWidth,
+            double strength,
+            double widthWaveCount,
+            double widthPhase,
+            boolean secondary,
+            double turningNoise,
+            double headingRelaxation
+    ) {
+        List<RidgeNode> nodes =
+                new ArrayList<>(
+                        segmentCount + 1
+                );
+
+        double outward =
+                Math.max(
+                        0.0,
+                        startOutward
+                );
+
+        double arc =
+                clamp(
+                        startArc,
+                        spineLength * 0.012,
+                        spineLength * 0.988
+                );
+
+        double heading =
+                clamp(
+                        initialHeading,
+                        Math.toRadians(-82.0),
+                        Math.toRadians(82.0)
+                );
+
+        double angularVelocity =
+                range(
+                        random,
+                        -0.030,
+                        0.030
+                );
+
+        double bendBias =
+                range(
+                        random,
+                        -0.018,
+                        0.018
+                );
+
+        nodes.add(
+                new RidgeNode(
+                        outward,
+                        arc,
+                        0.0
+                )
+        );
+
+        double baseStep =
+                pathLength
+                        / segmentCount;
+
+        for (int segment = 1; segment <= segmentCount; segment++) {
+            double progress =
+                    (double) segment
+                            / segmentCount;
+
+            /*
+             * Correlated angular motion produces smooth bends instead of
+             * independent zig-zag points. The tiny relaxation nudges extreme
+             * north/south sweepers gradually back toward an outward descent.
+             */
+            angularVelocity =
+                    angularVelocity * 0.64
+                            + triangular(random)
+                            * turningNoise
+                            + bendBias;
+
+            heading +=
+                    angularVelocity;
+
+            heading *=
+                    1.0
+                            - headingRelaxation;
+
+            heading =
+                    clamp(
+                            heading,
+                            Math.toRadians(-82.0),
+                            Math.toRadians(82.0)
+                    );
+
+            double step =
+                    baseStep
+                            * range(
+                            random,
+                            0.90,
+                            1.10
+                    );
+
+            outward +=
+                    Math.cos(
+                            heading
+                    ) * step;
+
+            arc +=
+                    Math.sin(
+                            heading
+                    ) * step;
+
+            double minimumArc =
+                    spineLength * 0.010;
+
+            double maximumArc =
+                    spineLength * 0.990;
+
+            if (arc < minimumArc) {
+                arc =
+                        minimumArc;
+
+                heading =
+                        Math.abs(
+                                heading
+                        ) * 0.72;
+            } else if (arc > maximumArc) {
+                arc =
+                        maximumArc;
+
+                heading =
+                        -Math.abs(
+                                heading
+                        ) * 0.72;
+            }
+
+            nodes.add(
+                    new RidgeNode(
+                            outward,
+                            arc,
+                            progress
+                    )
+            );
+        }
+
+        return new RidgePath(
+                side,
+                nodes,
+                startWidth,
+                endWidth,
+                strength,
+                widthWaveCount,
+                widthPhase,
+                secondary
+        );
+    }
+
+    private static RidgePoint pointOnPath(
+            RidgePath path,
+            double progress
+    ) {
+        List<RidgeNode> nodes =
+                path.nodes();
+
+        double clampedProgress =
+                clamp01(
+                        progress
+                );
+
+        if (clampedProgress <= 0.0) {
+            RidgeNode first =
+                    nodes.getFirst();
+
+            return new RidgePoint(
+                    first.outward(),
+                    first.arc()
+            );
+        }
+
+        if (clampedProgress >= 1.0) {
+            RidgeNode last =
+                    nodes.getLast();
+
+            return new RidgePoint(
+                    last.outward(),
+                    last.arc()
+            );
+        }
+
+        for (int i = 0; i < nodes.size() - 1; i++) {
+            RidgeNode a =
+                    nodes.get(i);
+
+            RidgeNode b =
+                    nodes.get(i + 1);
+
+            if (clampedProgress > b.progress()) {
+                continue;
+            }
+
+            double localT =
+                    (clampedProgress - a.progress())
+                            / (b.progress() - a.progress());
+
+            return new RidgePoint(
+                    lerp(
+                            a.outward(),
+                            b.outward(),
+                            localT
+                    ),
+                    lerp(
+                            a.arc(),
+                            b.arc(),
+                            localT
+                    )
+            );
+        }
+
+        RidgeNode last =
+                nodes.getLast();
+
+        return new RidgePoint(
+                last.outward(),
+                last.arc()
+        );
+    }
+
+    private static double headingOnPath(
+            RidgePath path,
+            double progress
+    ) {
+        List<RidgeNode> nodes =
+                path.nodes();
+
+        double clampedProgress =
+                clamp01(
+                        progress
+                );
+
+        for (int i = 0; i < nodes.size() - 1; i++) {
+            RidgeNode a =
+                    nodes.get(i);
+
+            RidgeNode b =
+                    nodes.get(i + 1);
+
+            if (
+                    clampedProgress <= b.progress()
+                            || i == nodes.size() - 2
+            ) {
+                return Math.atan2(
+                        b.arc() - a.arc(),
+                        b.outward() - a.outward()
+                );
+            }
+        }
+
+        return 0.0;
+    }
+
+    private static double widthAtProgress(
+            RidgePath path,
+            double progress
+    ) {
+        return lerp(
+                path.startWidth(),
+                path.endWidth(),
+                smoothstep(
+                        0.0,
+                        1.0,
+                        clamp01(progress)
+                )
+        );
+    }
+
+    private static double triangular(
+            SplittableRandom random
+    ) {
+        return random.nextDouble()
+                + random.nextDouble()
+                - 1.0;
     }
 
     private static double range(
@@ -596,23 +1561,188 @@ public final class CascadeMorphologySampler {
     private static double clamp01(
             double value
     ) {
-        return Math.max(
+        return clamp(
+                value,
                 0.0,
+                1.0
+        );
+    }
+
+    private static double clamp(
+            double value,
+            double minimum,
+            double maximum
+    ) {
+        return Math.max(
+                minimum,
                 Math.min(
-                        1.0,
+                        maximum,
                         value
                 )
         );
     }
 
-    private record RidgeSpur(
+    private record Massif(
             double centerArc,
-            double side,
-            double length,
-            double width,
-            double strength,
-            double bend,
-            double curve
+            double halfWidth,
+            double strength
     ) {
+    }
+
+    private record RidgeNode(
+            double outward,
+            double arc,
+            double progress
+    ) {
+    }
+
+    private record RidgePoint(
+            double outward,
+            double arc
+    ) {
+    }
+
+    private record PathDistance(
+            double distanceSquared,
+            double progress
+    ) {
+    }
+
+    private static final class RidgePath {
+
+        private final double side;
+        private final List<RidgeNode> nodes;
+        private final double startWidth;
+        private final double endWidth;
+        private final double strength;
+        private final double widthWaveCount;
+        private final double widthPhase;
+        private final boolean secondary;
+
+        private final double minimumOutward;
+        private final double maximumOutward;
+        private final double minimumArc;
+        private final double maximumArc;
+        private final double maximumWidth;
+
+        private RidgePath(
+                double side,
+                List<RidgeNode> nodes,
+                double startWidth,
+                double endWidth,
+                double strength,
+                double widthWaveCount,
+                double widthPhase,
+                boolean secondary
+        ) {
+            this.side = side;
+            this.nodes = List.copyOf(nodes);
+            this.startWidth = startWidth;
+            this.endWidth = endWidth;
+            this.strength = strength;
+            this.widthWaveCount = widthWaveCount;
+            this.widthPhase = widthPhase;
+            this.secondary = secondary;
+
+            double minOutward =
+                    Double.POSITIVE_INFINITY;
+
+            double maxOutward =
+                    Double.NEGATIVE_INFINITY;
+
+            double minArc =
+                    Double.POSITIVE_INFINITY;
+
+            double maxArc =
+                    Double.NEGATIVE_INFINITY;
+
+            for (RidgeNode node : nodes) {
+                minOutward =
+                        Math.min(
+                                minOutward,
+                                node.outward()
+                        );
+
+                maxOutward =
+                        Math.max(
+                                maxOutward,
+                                node.outward()
+                        );
+
+                minArc =
+                        Math.min(
+                                minArc,
+                                node.arc()
+                        );
+
+                maxArc =
+                        Math.max(
+                                maxArc,
+                                node.arc()
+                        );
+            }
+
+            this.minimumOutward = minOutward;
+            this.maximumOutward = maxOutward;
+            this.minimumArc = minArc;
+            this.maximumArc = maxArc;
+            this.maximumWidth =
+                    Math.max(
+                            startWidth,
+                            endWidth
+                    );
+        }
+
+        private double side() {
+            return side;
+        }
+
+        private List<RidgeNode> nodes() {
+            return nodes;
+        }
+
+        private double startWidth() {
+            return startWidth;
+        }
+
+        private double endWidth() {
+            return endWidth;
+        }
+
+        private double strength() {
+            return strength;
+        }
+
+        private double widthWaveCount() {
+            return widthWaveCount;
+        }
+
+        private double widthPhase() {
+            return widthPhase;
+        }
+
+        private boolean secondary() {
+            return secondary;
+        }
+
+        private double minimumOutward() {
+            return minimumOutward;
+        }
+
+        private double maximumOutward() {
+            return maximumOutward;
+        }
+
+        private double minimumArc() {
+            return minimumArc;
+        }
+
+        private double maximumArc() {
+            return maximumArc;
+        }
+
+        private double maximumWidth() {
+            return maximumWidth;
+        }
     }
 }
