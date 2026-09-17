@@ -1,0 +1,40 @@
+plugins {
+    id 'application'
+}
+
+dependencies {
+    implementation project(':worldgen-core')
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+    mainClass = 'dev.lemma.finiteworlds.tools.PreviewMain'
+}
+
+tasks.register('generateWorldPreview', JavaExec) {
+    group = 'finite worlds'
+    description = 'Generates preview maps for a Finite Worlds seed.'
+
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = application.mainClass
+
+    def previewSeed =
+            providers.gradleProperty('seed')
+                    .getOrElse('12345')
+
+    def previewType =
+            providers.gradleProperty('type')
+                    .getOrElse('cascadia')
+
+    args(
+            '--seed',
+            previewSeed,
+            '--type',
+            previewType
+    )
+}
