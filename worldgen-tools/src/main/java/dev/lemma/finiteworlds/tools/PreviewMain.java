@@ -3,6 +3,7 @@ package dev.lemma.finiteworlds.tools;
 import dev.lemma.finiteworlds.core.WorldBlueprint;
 import dev.lemma.finiteworlds.core.WorldConfig;
 import dev.lemma.finiteworlds.core.generator.CascadiaGenerator;
+import dev.lemma.finiteworlds.core.geography.ContinentPlan;
 
 import java.nio.file.Path;
 
@@ -45,6 +46,11 @@ public final class PreviewMain {
                 "Generating world blueprint..."
         );
 
+        ContinentPlan plan =
+                generator.createPlan(
+                        seed
+                );
+
         WorldBlueprint blueprint =
                 generator.generate(
                         seed,
@@ -60,6 +66,7 @@ public final class PreviewMain {
         PreviewWriter.writeAll(
                 blueprint,
                 seed,
+                plan,
                 output
         );
 
@@ -67,5 +74,6 @@ public final class PreviewMain {
                 "Preview written to: "
                         + output.toAbsolutePath()
         );
+
     }
 }

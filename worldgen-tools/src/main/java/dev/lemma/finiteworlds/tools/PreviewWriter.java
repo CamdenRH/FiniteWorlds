@@ -2,6 +2,7 @@ package dev.lemma.finiteworlds.tools;
 
 import dev.lemma.finiteworlds.core.WorldBlueprint;
 import dev.lemma.finiteworlds.core.terrain.TerrainSampler;
+import dev.lemma.finiteworlds.core.geography.ContinentPlan;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -16,6 +17,7 @@ public final class PreviewWriter {
     public static void writeAll(
             WorldBlueprint world,
             long seed,
+            ContinentPlan plan,
             Path directory
     ) throws IOException {
 
@@ -54,6 +56,37 @@ public final class PreviewWriter {
                 seed,
                 directory.resolve(
                         "terrain.png"
+                )
+        );
+
+        writeContinentPlan(
+                plan,
+                world.resolution(),
+                directory.resolve(
+                        "continent-plan.png"
+                )
+        );
+
+        writeCoastDistance(
+                world,
+                directory.resolve(
+                        "coast-distance.png"
+                )
+        );
+
+        writeMountainMask(
+                world,
+                plan,
+                directory.resolve(
+                        "mountain-mask.png"
+                )
+        );
+
+        writeMountainUplift(
+                world,
+                plan,
+                directory.resolve(
+                        "mountain-uplift.png"
                 )
         );
     }
@@ -457,4 +490,341 @@ public final class PreviewWriter {
                 path.toFile()
         );
     }
+
+    private static void writeContinentPlan(
+            ContinentPlan plan,
+            int size,
+            Path path
+    ) throws IOException {
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (
+                int z = 0;
+                z < size;
+                z++
+        ) {
+
+            for (
+                    int x = 0;
+                    x < size;
+                    x++
+            ) {
+
+                double nx =
+                        (
+                                (x + 0.5)
+                                        / size
+                        ) * 2.0
+                                - 1.0;
+
+                double nz =
+                        (
+                                (z + 0.5)
+                                        / size
+                        ) * 2.0
+                                - 1.0;
+
+                double value =
+                        plan.sampleBase(
+                                nx,
+                                nz
+                        );
+
+                double normalized =
+                        smoothstep(
+                                -0.05,
+                                0.05,
+                                value
+                        );
+
+                int gray =
+                        clamp255(
+                                normalized
+                                        * 255.0
+                        );
+
+                int rgb =
+                        (gray << 16)
+                                | (gray << 8)
+                                | gray;
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+    private static double smoothstep(
+            double edge0,
+            double edge1,
+            double value
+    ) {
+
+        double t =
+                (value - edge0)
+                        / (edge1 - edge0);
+
+        t =
+                Math.max(
+                        0.0,
+                        Math.min(
+                                1.0,
+                                t
+                        )
+                );
+
+        return t
+                * t
+                * (3.0 - 2.0 * t);
+    }
+
+    private static void writeCoastDistance(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        double displayDistance =
+                world.config()
+                        .worldSizeBlocks()
+                        * 0.15;
+
+        for (
+                int z = 0;
+                z < size;
+                z++
+        ) {
+
+            for (
+                    int x = 0;
+                    x < size;
+                    x++
+            ) {
+
+                double distance =
+                        world.coastDistance(
+                                x,
+                                z
+                        );
+
+                double normalized =
+                        distance
+                                / displayDistance;
+
+                normalized =
+                        Math.max(
+                                -1.0,
+                                Math.min(
+                                        1.0,
+                                        normalized
+                                )
+                        );
+
+                /*
+                 * Coastline = middle gray.
+                 *
+                 * Deep ocean = dark.
+                 * Deep inland = bright.
+                 */
+
+                int gray =
+                        clamp255(
+                                (
+                                        normalized
+                                                * 0.5
+                                                + 0.5
+                                ) * 255.0
+                        );
+
+                int rgb =
+                        (gray << 16)
+                                | (gray << 8)
+                                | gray;
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+    private static void writeMountainMask(
+            WorldBlueprint world,
+            ContinentPlan plan,
+            Path path
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+
+            for (int x = 0; x < size; x++) {
+
+                double nx =
+                        (
+                                (x + 0.5)
+                                        / size
+                        ) * 2.0
+                                - 1.0;
+
+                double nz =
+                        (
+                                (z + 0.5)
+                                        / size
+                        ) * 2.0
+                                - 1.0;
+
+                double mask =
+                        plan.mountainSystem()
+                                .corridorMask(
+                                        nx,
+                                        nz
+                                );
+
+                int gray =
+                        clamp255(
+                                mask * 255.0
+                        );
+
+                int rgb =
+                        (gray << 16)
+                                | (gray << 8)
+                                | gray;
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+    private static void writeMountainUplift(
+            WorldBlueprint world,
+            ContinentPlan plan,
+            Path path
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        /*
+         * Keep this in sync with the prototype
+         * maximum uplift used by MountainSystem.
+         */
+        double displayMaximum =
+                190.0;
+
+        for (int z = 0; z < size; z++) {
+
+            for (int x = 0; x < size; x++) {
+
+                double nx =
+                        (
+                                (x + 0.5)
+                                        / size
+                        ) * 2.0
+                                - 1.0;
+
+                double nz =
+                        (
+                                (z + 0.5)
+                                        / size
+                        ) * 2.0
+                                - 1.0;
+
+                double uplift =
+                        plan.mountainSystem()
+                                .upliftAt(
+                                        nx,
+                                        nz
+                                );
+
+                double normalized =
+                        Math.min(
+                                1.0,
+                                uplift
+                                        / displayMaximum
+                        );
+
+                int gray =
+                        clamp255(
+                                normalized
+                                        * 255.0
+                        );
+
+                int rgb =
+                        (gray << 16)
+                                | (gray << 8)
+                                | gray;
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
 }
+

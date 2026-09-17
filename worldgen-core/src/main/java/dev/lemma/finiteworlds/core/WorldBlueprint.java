@@ -6,6 +6,7 @@ public final class WorldBlueprint {
 
     private final float[] landMask;
     private final float[] elevation;
+    private final float[] coastDistance;
 
     public WorldBlueprint(WorldConfig config) {
         this.config = config;
@@ -14,6 +15,7 @@ public final class WorldBlueprint {
 
         this.landMask = new float[count];
         this.elevation = new float[count];
+        this.coastDistance = new float[count];
     }
 
     public WorldConfig config() {
@@ -42,6 +44,25 @@ public final class WorldBlueprint {
 
     public void setElevation(int x, int z, float value) {
         elevation[index(x, z)] = value;
+    }
+
+    public float coastDistance(
+            int x,
+            int z
+    ) {
+        return coastDistance[
+                index(x, z)
+                ];
+    }
+
+    public void setCoastDistance(
+            int x,
+            int z,
+            float value
+    ) {
+        coastDistance[
+                index(x, z)
+                ] = value;
     }
 
     public float elevationAtBlock(

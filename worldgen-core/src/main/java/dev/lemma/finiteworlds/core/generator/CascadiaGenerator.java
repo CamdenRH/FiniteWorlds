@@ -3,73 +3,130 @@ package dev.lemma.finiteworlds.core.generator;
 import dev.lemma.finiteworlds.core.SeedUtil;
 import dev.lemma.finiteworlds.core.WorldBlueprint;
 import dev.lemma.finiteworlds.core.WorldConfig;
+
+import dev.lemma.finiteworlds.core.geography.CoastDistanceField;
+import dev.lemma.finiteworlds.core.geography.ContinentPlan;
+import dev.lemma.finiteworlds.core.geography.ContinentPlanner;
+import dev.lemma.finiteworlds.core.geography.ContinentSampler;
+
 import dev.lemma.finiteworlds.core.noise.ValueNoise;
 
 public final class CascadiaGenerator {
+
+    public ContinentPlan createPlan(
+            long seed
+    ) {
+
+        return ContinentPlanner.generate(
+                seed
+        );
+    }
 
     public WorldBlueprint generate(
             long seed,
             WorldConfig config
     ) {
+
         WorldBlueprint blueprint =
-                new WorldBlueprint(config);
+                new WorldBlueprint(
+                        config
+                );
 
         int size =
                 config.blueprintResolution();
 
-        /*
-         * Controls broad distortion of the
-         * underlying continent shape.
-         */
-        ValueNoise warpNoise =
-                new ValueNoise(
-                        SeedUtil.derive(
-                                seed,
-                                "continent-warp"
-                        )
-                );
 
         /*
-         * Controls irregularity along the coastline.
+         * =====================================================
+         * PHASE 1:
+         * BUILD GLOBAL CONTINENT PLAN
+         * =====================================================
          */
-        ValueNoise coastNoise =
-                new ValueNoise(
-                        SeedUtil.derive(
-                                seed,
-                                "coastline"
-                        )
+
+        ContinentPlan plan =
+                createPlan(
+                        seed
                 );
 
-        /*
-         * Currently used primarily for ocean-floor
-         * variation. This is deliberately separate
-         * from inland elevation.
-         */
-        ValueNoise terrainNoise =
-                new ValueNoise(
-                        SeedUtil.derive(
-                                seed,
-                                "terrain"
-                        )
+        ContinentSampler continentSampler =
+                new ContinentSampler(
+                        seed,
+                        plan
                 );
 
-        /*
-         * Controls satellite-island placement.
-         */
-        ValueNoise islandNoise =
-                new ValueNoise(
-                        SeedUtil.derive(
-                                seed,
-                                "islands"
-                        )
-                );
 
         /*
-         * Broad inland elevation.
-         *
-         * IMPORTANT:
-         * This is independent of the land/coast field.
+         * =====================================================
+         * PHASE 2:
+         * GENERATE LAND MASK
+         * =====================================================
          */
+
+        for (
+                int z = 0;
+                z < size;
+                z++
+        ) {
+
+            for (
+                    int x = 0;
+                    x < size;
+                    x++
+            ) {
+
+                double nx =
+                        normalizedCoordinate(
+                                x,
+                                size
+                        );
+
+                double nz =
+                        normalizedCoordinate(
+                                z,
+                                size
+                        );
+
+                double landScore =
+                        continentSampler.sample(
+                                nx,
+                                nz
+                        );
+
+                float landMask =
+                        (float) smoothstep(
+                                -0.018,
+                                0.025,
+                                landScore
+                        );
+
+                blueprint.setLandMask(
+                        x,
+                        z,
+                        landMask
+                );
+            }
+        }
+
+
+        /*
+         * =====================================================
+         * PHASE 3:
+         * CALCULATE SIGNED COAST DISTANCE
+         * =====================================================
+         */
+
+        CoastDistanceField.populate(
+                blueprint
+        );
+
+
+        /*
+         * =====================================================
+         * PHASE 4:
+         * GENERATE LAND / OCEAN ELEVATION
+         * =====================================================
+         */
+
         ValueNoise elevationNoise =
                 new ValueNoise(
                         SeedUtil.derive(
@@ -78,10 +135,6 @@ public final class CascadiaGenerator {
                         )
                 );
 
-        /*
-         * Medium-scale regional variation in inland
-         * terrain elevation.
-         */
         ValueNoise reliefNoise =
                 new ValueNoise(
                         SeedUtil.derive(
@@ -90,38 +143,50 @@ public final class CascadiaGenerator {
                         )
                 );
 
-        for (int z = 0; z < size; z++) {
-            for (int x = 0; x < size; x++) {
+        ValueNoise oceanNoise =
+                new ValueNoise(
+                        SeedUtil.derive(
+                                seed,
+                                "ocean-relief"
+                        )
+                );
 
-                /*
-                 * Your current experimental range:
-                 *
-                 * -2 .. +2
-                 *
-                 * rather than the earlier -1 .. +1.
-                 */
+
+        for (
+                int z = 0;
+                z < size;
+                z++
+        ) {
+
+            for (
+                    int x = 0;
+                    x < size;
+                    x++
+            ) {
+
                 double nx =
-                        ((x + 0.5) / size)
-                                * 4.0
-                                - 2.0;
+                        normalizedCoordinate(
+                                x,
+                                size
+                        );
 
                 double nz =
-                        ((z + 0.5) / size)
-                                * 4.0
-                                - 2.0;
+                        normalizedCoordinate(
+                                z,
+                                size
+                        );
 
-                generateCell(
+                generateElevation(
                         blueprint,
+                        config,
+                        plan,
                         x,
                         z,
                         nx,
                         nz,
-                        warpNoise,
-                        coastNoise,
-                        terrainNoise,
-                        islandNoise,
                         elevationNoise,
-                        reliefNoise
+                        reliefNoise,
+                        oceanNoise
                 );
             }
         }
@@ -129,232 +194,51 @@ public final class CascadiaGenerator {
         return blueprint;
     }
 
-    private void generateCell(
+
+    private void generateElevation(
             WorldBlueprint blueprint,
+            WorldConfig config,
+            ContinentPlan plan,
             int x,
             int z,
             double nx,
             double nz,
-            ValueNoise warpNoise,
-            ValueNoise coastNoise,
-            ValueNoise terrainNoise,
-            ValueNoise islandNoise,
             ValueNoise elevationNoise,
-            ValueNoise reliefNoise
+            ValueNoise reliefNoise,
+            ValueNoise oceanNoise
     ) {
 
-        /*
-         * =====================================================
-         * DOMAIN WARP
-         * =====================================================
-         *
-         * Distorts coordinates before evaluating the
-         * continent shape.
-         *
-         * This prevents the base landmass from looking
-         * like a mathematically perfect ellipse.
-         */
-
-        double warpX =
-                warpNoise.fbm(
-                        nx * 1.8,
-                        nz * 1.8,
-                        4,
-                        2.0,
-                        0.5
-                ) * 0.12;
-
-        double warpZ =
-                warpNoise.fbm(
-                        nx * 1.8 + 91.7,
-                        nz * 1.8 - 47.3,
-                        4,
-                        2.0,
-                        0.5
-                ) * 0.12;
-
-        double wx =
-                nx + warpX;
-
-        double wz =
-                nz + warpZ;
-
-
-        /*
-         * =====================================================
-         * MAIN CONTINENT
-         * =====================================================
-         *
-         * Slightly north/south elongated ellipse.
-         *
-         * These retain your current experimental values.
-         */
-
-        double continentX =
-                wx / 0.6;
-
-        double continentZ =
-                wz / 0.7;
-
-        double radius =
-                Math.sqrt(
-                        continentX * continentX
-                                + continentZ * continentZ
+        double coastDistance =
+                blueprint.coastDistance(
+                        x,
+                        z
                 );
 
-        double continent =
-                1.0 - radius;
+        double seaLevel =
+                config.seaLevel();
 
-
-        /*
-         * =====================================================
-         * COASTLINE DISTORTION
-         * =====================================================
-         */
-
-        double coast =
-                coastNoise.fbm(
-                        wx * 3.2,
-                        wz * 3.2,
-                        5,
-                        2.05,
-                        0.53
-                );
-
-        /*
-         * Your current stronger coastline distortion.
-         */
-        continent +=
-                coast * 0.6;
-
-
-        /*
-         * =====================================================
-         * SATELLITE ISLAND REGION
-         * =====================================================
-         *
-         * Concentrates additional islands around the
-         * outside of the primary continent.
-         */
-
-        double ringDistance =
-                Math.abs(
-                        radius - 1.1
-                );
-
-        double islandEnvelope =
-                Math.max(
-                        0.0,
-                        1.0
-                                - ringDistance / 3.0
-                );
-
-        double islands =
-                islandNoise.fbm(
-                        nx * 8.0,
-                        nz * 8.0,
-                        4,
-                        2.1,
-                        0.55
-                );
-
-        double islandField =
-                islands
-                        * islandEnvelope
-                        - 0.33;
-
-
-        /*
-         * Whichever land field is stronger wins:
-         *
-         * main continent
-         * or
-         * satellite island.
-         */
-
-        double landValue =
-                Math.max(
-                        continent,
-                        islandField
-                );
-
-
-        /*
-         * =====================================================
-         * LAND MASK
-         * =====================================================
-         *
-         * This field should answer:
-         *
-         * "Is this land or ocean?"
-         *
-         * It should NOT be responsible for inland
-         * elevation anymore.
-         */
-
-        float landMask =
-                (float) smoothstep(
-                        -0.025,
-                        0.06,
-                        landValue
-                );
-
-        blueprint.setLandMask(
-                x,
-                z,
-                landMask
-        );
-
-
-        /*
-         * =====================================================
-         * ELEVATION
-         * =====================================================
-         *
-         * IMPORTANT CHANGE:
-         *
-         * landValue controls only the coastal transition.
-         *
-         * Inland elevation now comes from independent
-         * elevation fields.
-         *
-         * This prevents elevation contours from simply
-         * following the outline of the coast.
-         */
+        double worldSize =
+                config.worldSizeBlocks();
 
         double elevation;
 
-        if (landValue >= 0.0) {
 
-            /*
-             * ---------------------------------------------
-             * BROAD CONTINENTAL UNDULATION
-             * ---------------------------------------------
-             *
-             * Very large regional changes in elevation.
-             *
-             * This is intentionally LOW frequency.
-             */
+        /*
+         * =====================================================
+         * LAND
+         * =====================================================
+         */
+
+        if (coastDistance >= 0.0) {
 
             double broadElevation =
                     elevationNoise.fbm(
-                            nx * 1.35,
-                            nz * 1.35,
+                            nx * 1.30,
+                            nz * 1.30,
                             4,
                             2.0,
                             0.5
                     );
-
-
-            /*
-             * ---------------------------------------------
-             * REGIONAL RELIEF
-             * ---------------------------------------------
-             *
-             * Adds smaller regional variation without
-             * turning this into our eventual mountain
-             * generator.
-             */
 
             double regionalRelief =
                     reliefNoise.fbm(
@@ -365,83 +249,51 @@ public final class CascadiaGenerator {
                             0.52
                     );
 
-
             /*
-             * ---------------------------------------------
-             * INTERIOR ELEVATION
-             * ---------------------------------------------
+             * Still deliberately modest.
              *
-             * Keep this deliberately moderate.
-             *
-             * Large mountain systems will eventually be
-             * explicit geographic objects instead of
-             * merely amplified noise.
+             * Explicit mountain systems come next.
              */
-
             double interiorElevation =
                     105.0
                             + broadElevation
-                            * 35.0
+                            * 34.0
                             + regionalRelief
-                            * 16.0;
-
-
-            /*
-             * Avoid random inland depressions dropping
-             * below sea level for now.
-             *
-             * Later, explicit basins and lakes can be
-             * allowed to do that intentionally.
-             */
+                            * 15.0;
 
             interiorElevation =
                     Math.max(
-                            72.0,
+                            seaLevel + 8.0,
                             interiorElevation
                     );
 
 
             /*
-             * ---------------------------------------------
-             * COASTAL TRANSITION
-             * ---------------------------------------------
+             * Width of coastal lowland.
              *
-             * landValue is still useful here because it
-             * tells us how newly-emerged the terrain is.
-             *
-             * But its influence disappears quickly once
-             * we move inland.
+             * Scales with total world size so quick-test
+             * worlds retain similar proportions.
              */
+            double coastalTransition =
+                    worldSize
+                            * 0.035;
 
             double coastBlend =
                     smoothstep(
                             0.0,
-                            0.12,
-                            landValue
+                            coastalTransition,
+                            coastDistance
                     );
 
-
-            /*
-             * Immediate coastal terrain starts just over
-             * sea level and climbs gently.
-             */
-
             double coastalElevation =
-                    65.0
+                    seaLevel
+                            + 1.0
                             + smoothstep(
                             0.0,
-                            0.10,
-                            landValue
-                    ) * 18.0;
-
-
-            /*
-             * Blend:
-             *
-             * coast-controlled elevation
-             *        ↓
-             * independent inland elevation
-             */
+                            coastalTransition
+                                    * 0.45,
+                            coastDistance
+                    ) * 17.0;
 
             elevation =
                     lerp(
@@ -450,52 +302,160 @@ public final class CascadiaGenerator {
                             coastBlend
                     );
 
-        } else {
-
             /*
              * =================================================
-             * OCEAN BATHYMETRY
+             * CASCADE UPLIFT
              * =================================================
-             *
-             * The ocean may continue using landValue for now.
-             *
-             * Eventually this will also become independent:
-             *
-             * continental shelf
-             * continental slope
-             * abyssal plain
-             * ocean ridges
-             * seamounts
-             * trenches
              */
 
-            double oceanDetail =
-                    terrainNoise.fbm(
-                            nx * 6.0,
-                            nz * 6.0,
-                            5,
-                            2.0,
-                            0.5
+            double mountainUplift =
+                    plan.mountainSystem()
+                            .upliftAt(
+                                    nx,
+                                    nz
+                            );
+
+
+            /*
+             * Don't allow the mountain corridor to continue
+             * straight into the ocean.
+             *
+             * Mountains fade in over the first ~500 blocks
+             * inland.
+             */
+
+            double inlandMountainFade =
+                    smoothstep(
+                            150.0,
+                            700.0,
+                            coastDistance
                     );
 
-            elevation =
-                    64.0
-                            + landValue
-                            * 360.0
-                            + oceanDetail
-                            * 15.0;
 
-            elevation =
-                    Math.max(
-                            -180.0,
-                            elevation
-                    );
+            elevation +=
+                    mountainUplift
+                            * inlandMountainFade;
         }
 
 
         /*
-         * Store final macro elevation in blueprint.
+         * =====================================================
+         * OCEAN
+         * =====================================================
          */
+
+        else {
+
+            double offshoreDistance =
+                    -coastDistance;
+
+
+            /*
+             * Continental shelf width.
+             */
+
+            double shelfWidth =
+                    worldSize
+                            * 0.025;
+
+
+            /*
+             * End of continental slope and beginning
+             * of deep-ocean basin.
+             */
+
+            double abyssStart =
+                    worldSize
+                            * 0.12;
+
+
+            double depth;
+
+            if (
+                    offshoreDistance
+                            <= shelfWidth
+            ) {
+
+                /*
+                 * Shallow continental shelf.
+                 */
+
+                double t =
+                        smoothstep(
+                                0.0,
+                                shelfWidth,
+                                offshoreDistance
+                        );
+
+                depth =
+                        lerp(
+                                4.0,
+                                34.0,
+                                t
+                        );
+
+            } else {
+
+                /*
+                 * Continental slope into abyss.
+                 */
+
+                double t =
+                        smoothstep(
+                                shelfWidth,
+                                abyssStart,
+                                offshoreDistance
+                        );
+
+                depth =
+                        lerp(
+                                34.0,
+                                215.0,
+                                t
+                        );
+            }
+
+
+            /*
+             * Ocean floor variation.
+             *
+             * Kept deliberately small compared with
+             * the bathymetric profile.
+             */
+
+            double oceanRelief =
+                    oceanNoise.fbm(
+                            nx * 5.0,
+                            nz * 5.0,
+                            5,
+                            2.05,
+                            0.52
+                    );
+
+            double reliefStrength =
+                    lerp(
+                            2.0,
+                            12.0,
+                            smoothstep(
+                                    0.0,
+                                    abyssStart,
+                                    offshoreDistance
+                            )
+                    );
+
+            elevation =
+                    seaLevel
+                            - depth
+                            + oceanRelief
+                            * reliefStrength;
+
+            elevation =
+                    Math.max(
+                            -220.0,
+                            elevation
+                    );
+        }
+
 
         blueprint.setElevation(
                 x,
@@ -505,20 +465,27 @@ public final class CascadiaGenerator {
     }
 
 
-    /*
-     * =========================================================
-     * HELPERS
-     * =========================================================
-     */
+    private static double normalizedCoordinate(
+            int cell,
+            int size
+    ) {
+
+        return (
+                (cell + 0.5)
+                        / size
+        ) * 2.0
+                - 1.0;
+    }
+
 
     private static double smoothstep(
             double edge0,
             double edge1,
-            double x
+            double value
     ) {
 
         double t =
-                (x - edge0)
+                (value - edge0)
                         / (edge1 - edge0);
 
         t =
@@ -543,7 +510,8 @@ public final class CascadiaGenerator {
     ) {
 
         return a
-                + (b - a)
-                * t;
+                + (
+                b - a
+        ) * t;
     }
 }
