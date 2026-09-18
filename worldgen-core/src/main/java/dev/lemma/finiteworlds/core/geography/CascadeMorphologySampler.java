@@ -1,6 +1,7 @@
 package dev.lemma.finiteworlds.core.geography;
 
 import dev.lemma.finiteworlds.core.SeedUtil;
+import dev.lemma.finiteworlds.core.WorldBlueprint;
 import dev.lemma.finiteworlds.core.noise.ValueNoise;
 
 import java.util.ArrayList;
@@ -17,12 +18,14 @@ import java.util.SplittableRandom;
  *  - 3-5 distinct high mountain massifs separated by lower passes,
  *  - a continuous secondary-mountain relief field across the range body,
  *  - an explicit hierarchy of non-volcanic alpine summits,
+ *  - exactly one globally dominant landmark volcano,
  *  - a smaller hierarchy of major ridge systems,
  *  - secondary ridge branches that emerge from those major systems,
  *  - longer / broader western ridges and shorter / steeper eastern ridges.
  *
- * Volcanoes and explicit glacial / drainage erosion are intentionally left
- * for later passes so the basic mountain body can be evaluated first.
+ * Fine volcanic morphology plus explicit glacial / drainage erosion are
+ * intentionally left for later passes so the macro mountain body and landmark
+ * silhouette can be evaluated first.
  */
 public final class CascadeMorphologySampler {
 
@@ -35,15 +38,29 @@ public final class CascadeMorphologySampler {
     private final ValueNoise rangeReliefNoise;
     private final ValueNoise rangeWarpNoise;
     private final ValueNoise regionalHeightNoise;
+    private final ValueNoise volcanoMorphologyNoise;
     private final ValueNoise passNoise;
 
     private final List<CascadeMassif> massifs;
     private final List<CascadePeak> peaks;
+    private final CascadeVolcano landmarkVolcano;
     private final List<RidgePath> ridgeSpurs;
 
     public CascadeMorphologySampler(
             long worldSeed,
             MountainSystem cascadeSystem
+    ) {
+        this(
+                worldSeed,
+                cascadeSystem,
+                null
+        );
+    }
+
+    public CascadeMorphologySampler(
+            long worldSeed,
+            MountainSystem cascadeSystem,
+            WorldBlueprint blueprint
     ) {
         this.cascadeSystem = cascadeSystem;
         this.spineLength =
@@ -104,6 +121,14 @@ public final class CascadeMorphologySampler {
                         )
                 );
 
+        this.volcanoMorphologyNoise =
+                new ValueNoise(
+                        SeedUtil.derive(
+                                morphologySeed,
+                                "landmark-volcano-morphology"
+                        )
+                );
+
         this.passNoise =
                 new ValueNoise(
                         SeedUtil.derive(
@@ -125,6 +150,15 @@ public final class CascadeMorphologySampler {
                         worldSeed,
                         spineLength,
                         massifs
+                );
+
+        this.landmarkVolcano =
+                CascadeVolcanoPlanner.generate(
+                        worldSeed,
+                        cascadeSystem,
+                        massifs,
+                        peaks,
+                        blueprint
                 );
 
         this.ridgeSpurs =
@@ -465,6 +499,29 @@ public final class CascadeMorphologySampler {
 
         /*
          * =========================================================
+         * LANDMARK VOLCANO
+         * =========================================================
+         *
+         * The volcano owns a separate relief field and vertical budget.  It
+         * is not another ordinary CascadePeak: every world receives exactly
+         * one, and its summit is allowed to rise far above maximumUplift.
+         */
+        VolcanoMorphology volcanoMorphology =
+                volcanoMorphology(
+                        signedCascadeDistance,
+                        arcPosition
+                );
+
+        double volcanoRelief =
+                volcanoMorphology.relief();
+
+        double volcanoUplift =
+                cascadeSystem.maximumUplift()
+                        * landmarkVolcano.heightMultiplier()
+                        * volcanoRelief;
+
+        /*
+         * =========================================================
          * FINAL UPLIFT
          * =========================================================
          *
@@ -534,7 +591,7 @@ public final class CascadeMorphologySampler {
                         * 0.20
                         * peakRelief;
 
-        double uplift =
+        double ordinaryUplift =
                 clamp(
                         broadUplift
                                 + rangeDeviation
@@ -544,6 +601,23 @@ public final class CascadeMorphologySampler {
                         0.0,
                         maximumUplift
                 );
+
+        /*
+         * The upper cone should visually bury a little of the pre-existing
+         * ridge / peak noise beneath it.  The lower apron leaves the ordinary
+         * terrain almost untouched so the volcano still grows naturally out
+         * of the surrounding Cascades.
+         */
+        double volcanoDominance =
+                volcanoMorphology.dominance();
+
+        ordinaryUplift *=
+                1.0
+                        - volcanoDominance * 0.30;
+
+        double uplift =
+                ordinaryUplift
+                        + volcanoUplift;
 
         return new CascadeMorphologySample(
                 envelope,
@@ -555,6 +629,11 @@ public final class CascadeMorphologySampler {
                 crestStructure,
                 ridgeRelief,
                 peakRelief,
+                volcanoRelief,
+                volcanoMorphology.upperCone(),
+                volcanoMorphology.radialStructure(),
+                volcanoMorphology.craterMask(),
+                volcanoUplift,
                 passSuppression,
                 uplift
         );
@@ -1017,6 +1096,348 @@ public final class CascadeMorphologySampler {
                 maximumContribution
                         + pedestalContribution
         );
+    }
+
+    /*
+     * =============================================================
+     * LANDMARK VOLCANO FIELD
+     * =============================================================
+     */
+
+    private VolcanoMorphology volcanoMorphology(
+            double signedDistance,
+            double arcPosition
+    ) {
+        double normalizedAcross =
+                (signedDistance
+                        - landmarkVolcano.signedDistance())
+                        / landmarkVolcano.radiusAcross();
+
+        double normalizedAlong =
+                (arcPosition
+                        - landmarkVolcano.arcPosition())
+                        / landmarkVolcano.radiusAlong();
+
+        double rotation =
+                landmarkVolcano.rotationRadians();
+
+        double cosine =
+                Math.cos(rotation);
+
+        double sine =
+                Math.sin(rotation);
+
+        double localX =
+                normalizedAcross * cosine
+                        + normalizedAlong * sine;
+
+        double localY =
+                -normalizedAcross * sine
+                        + normalizedAlong * cosine;
+
+        double angle =
+                Math.atan2(
+                        localY,
+                        localX
+                );
+
+        /*
+         * Warp the footprint directionally instead of scaling both axes by
+         * one constant. This creates a broad favored flank and a steeper
+         * opposing flank while keeping the world-scale footprint intact.
+         */
+        double directionalStretch =
+                1.0
+                        + landmarkVolcano.asymmetry()
+                        * Math.cos(
+                        angle
+                                - landmarkVolcano.asymmetryPhase()
+                )
+                        + landmarkVolcano.asymmetry()
+                        * 0.28
+                        * Math.cos(
+                        angle * 2.0
+                                + landmarkVolcano.asymmetryPhase() * 0.65
+                );
+
+        directionalStretch =
+                clamp(
+                        directionalStretch,
+                        0.78,
+                        1.24
+                );
+
+        double baseRadius =
+                Math.hypot(
+                        localX,
+                        localY
+                ) / directionalStretch;
+
+        if (baseRadius >= 1.0) {
+            return VolcanoMorphology.empty();
+        }
+
+        double remaining =
+                1.0 - baseRadius;
+
+        /*
+         * Lower apron: broad and comparatively gentle. This remains the
+         * principal large-scale silhouette and ensures the volcano merges
+         * into the surrounding Cascade terrain instead of sitting on it.
+         */
+        double lowerApron =
+                Math.pow(
+                        remaining,
+                        1.12
+                );
+
+        double offsetAcross =
+                landmarkVolcano.summitOffsetAcross()
+                        / landmarkVolcano.radiusAcross();
+
+        double offsetAlong =
+                landmarkVolcano.summitOffsetAlong()
+                        / landmarkVolcano.radiusAlong();
+
+        double offsetX =
+                offsetAcross * cosine
+                        + offsetAlong * sine;
+
+        double offsetY =
+                -offsetAcross * sine
+                        + offsetAlong * cosine;
+
+        /*
+         * Upper cone: steeper, narrower, and slightly displaced from the
+         * center of the lower apron. The offset is intentionally subtle; its
+         * job is to create unequal flank lengths, not a visibly bent cone.
+         */
+        double upperX =
+                (localX - offsetX)
+                        / 0.47;
+
+        double upperY =
+                (localY - offsetY)
+                        / 0.43;
+
+        double upperRadius =
+                Math.hypot(
+                        upperX,
+                        upperY
+                );
+
+        double upperCone =
+                upperRadius < 1.0
+                        ? Math.pow(
+                        1.0 - upperRadius,
+                        1.72
+                )
+                        : 0.0;
+
+        double relief =
+                lowerApron * 0.66
+                        + upperCone * 0.37;
+
+        /*
+         * Alternating buttresses and shallow radial swales establish the
+         * drainage predisposition of a mature stratovolcano without actually
+         * carving rivers. Hydrology can later preferentially occupy the
+         * negative portions of this pattern.
+         */
+        double angularWarp =
+                volcanoMorphologyNoise.fbm(
+                        localX * 2.35 + 13.0,
+                        localY * 2.35 - 31.0,
+                        2,
+                        2.0,
+                        0.52
+                ) * 0.11;
+
+        double twistedAngle =
+                angle
+                        + angularWarp
+                        + Math.sin(
+                        baseRadius * Math.PI * 1.7
+                                + landmarkVolcano.buttressPhase()
+                ) * 0.045
+                        + baseRadius
+                        * 0.055
+                        * Math.sin(
+                        landmarkVolcano.asymmetryPhase()
+                );
+
+        double radialPrimary =
+                Math.cos(
+                        twistedAngle
+                                * landmarkVolcano.buttressCount()
+                                + landmarkVolcano.buttressPhase()
+                                + baseRadius * 0.55
+                );
+
+        double radialSecondary =
+                Math.cos(
+                        twistedAngle
+                                * (landmarkVolcano.buttressCount() + 3)
+                                - landmarkVolcano.buttressPhase() * 0.72
+                                - baseRadius * 0.90
+                );
+
+        double radialTertiary =
+                Math.cos(
+                        twistedAngle
+                                * Math.max(
+                                4,
+                                landmarkVolcano.buttressCount() - 3
+                        )
+                                + landmarkVolcano.buttressPhase() * 1.31
+                                + baseRadius * 1.15
+                );
+
+        double radialSignal =
+                radialPrimary * 0.50
+                        + radialSecondary * 0.30
+                        + radialTertiary * 0.20;
+
+        double radialWindow =
+                smoothstep(
+                        0.14,
+                        0.31,
+                        baseRadius
+                )
+                        * (
+                        1.0
+                                - smoothstep(
+                                0.78,
+                                0.98,
+                                baseRadius
+                        )
+                );
+
+        double radialDisplacement =
+                radialSignal
+                        * radialWindow
+                        * landmarkVolcano.buttressStrength()
+                        * (0.52 + remaining * 0.48);
+
+        relief +=
+                radialDisplacement * 0.55;
+
+        /*
+         * Low-amplitude coherent flank roughness breaks the perfect analytic
+         * surface without replacing geomorphology with raw noise. It is kept
+         * away from both the summit and the outermost apron.
+         */
+        double roughnessSignal =
+                volcanoMorphologyNoise.fbm(
+                        localX * 4.8 + 37.0,
+                        localY * 4.8 - 19.0,
+                        3,
+                        2.0,
+                        0.50
+                );
+
+        double roughnessWindow =
+                smoothstep(
+                        0.18,
+                        0.36,
+                        baseRadius
+                )
+                        * (
+                        1.0
+                                - smoothstep(
+                                0.76,
+                                0.97,
+                                baseRadius
+                        )
+                );
+
+        relief +=
+                roughnessSignal
+                        * landmarkVolcano.flankRoughness()
+                        * roughnessWindow;
+
+        /*
+         * Summit crater. The crater is intentionally small compared with the
+         * edifice and leaves a high rim, so the volcano remains the world's
+         * dominant summit while gaining a recognizable volcanic cap.
+         */
+        double craterRadius =
+                landmarkVolcano.craterRadiusFraction();
+
+        double craterX =
+                (localX - offsetX)
+                        / craterRadius;
+
+        double craterY =
+                (localY - offsetY)
+                        / (craterRadius * 0.86);
+
+        double craterDistance =
+                Math.hypot(
+                        craterX,
+                        craterY
+                );
+
+        double craterMask =
+                1.0
+                        - smoothstep(
+                        0.0,
+                        0.78,
+                        craterDistance
+                );
+
+        double craterRim =
+                smoothstep(
+                        0.48,
+                        0.82,
+                        craterDistance
+                )
+                        * (
+                        1.0
+                                - smoothstep(
+                                0.82,
+                                1.22,
+                                craterDistance
+                        )
+                );
+
+        relief +=
+                craterRim * 0.030;
+
+        relief -=
+                craterMask
+                        * landmarkVolcano.craterDepthFraction();
+
+        /*
+         * Dominance intentionally ignores the crater and radial swales. This
+         * prevents ordinary Cascade peak/ridge noise from poking through the
+         * volcanic edifice wherever the Pass-2 surface has a depression.
+         */
+        double dominance =
+                smoothstep(
+                        0.28,
+                        0.78,
+                        lowerApron * 0.78
+                                + upperCone * 0.22
+                );
+
+        double radialStructure =
+                clamp01(
+                        (radialSignal * 0.5 + 0.5)
+                                * radialWindow
+                );
+
+        return new VolcanoMorphology(
+                clamp01(relief),
+                clamp01(upperCone),
+                radialStructure,
+                clamp01(craterMask),
+                clamp01(dominance)
+        );
+    }
+
+    public CascadeVolcano landmarkVolcano() {
+        return landmarkVolcano;
     }
 
     /*
@@ -2053,6 +2474,26 @@ public final class CascadeMorphologySampler {
                         value
                 )
         );
+    }
+
+
+    private record VolcanoMorphology(
+            double relief,
+            double upperCone,
+            double radialStructure,
+            double craterMask,
+            double dominance
+    ) {
+
+        private static VolcanoMorphology empty() {
+            return new VolcanoMorphology(
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+            );
+        }
     }
 
     private record RidgeNode(

@@ -3,15 +3,19 @@ package dev.lemma.finiteworlds.tools;
 import dev.lemma.finiteworlds.core.WorldBlueprint;
 import dev.lemma.finiteworlds.core.geography.CascadeMorphologySample;
 import dev.lemma.finiteworlds.core.geography.CascadeMorphologySampler;
-import dev.lemma.finiteworlds.core.terrain.TerrainSampler;
+import dev.lemma.finiteworlds.core.geography.CascadeVolcano;
 import dev.lemma.finiteworlds.core.geography.ContinentPlan;
+import dev.lemma.finiteworlds.core.geography.GeoPoint;
+import dev.lemma.finiteworlds.core.geography.MountainSpine;
 import dev.lemma.finiteworlds.core.geography.TerrainProvince;
+import dev.lemma.finiteworlds.core.terrain.TerrainSampler;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 public final class PreviewWriter {
 
@@ -38,6 +42,16 @@ public final class PreviewWriter {
                 directory.resolve(
                         "elevation.png"
                 )
+        );
+
+        writeScalarField(
+                world,
+                directory.resolve(
+                        "elevation-landmark-scale.png"
+                ),
+                -200.0,
+                700.0,
+                world::elevation
         );
 
         writeRelief(
@@ -131,7 +145,25 @@ public final class PreviewWriter {
                 world::cascadeUplift
         );
 
+        writeScalarField(
+                world,
+                directory.resolve(
+                        "cascade-uplift-landmark-scale.png"
+                ),
+                0.0,
+                plan.mountainSystem()
+                        .maximumUplift() * 3.10,
+                world::cascadeUplift
+        );
+
         writeCascadeMorphologyDebug(
+                world,
+                seed,
+                plan,
+                directory
+        );
+
+        writeCascadeVolcanoDetail(
                 world,
                 seed,
                 plan,
@@ -943,10 +975,46 @@ public final class PreviewWriter {
                         BufferedImage.TYPE_INT_RGB
                 );
 
+        BufferedImage volcanoReliefImage =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        BufferedImage volcanoUpperConeImage =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        BufferedImage volcanoRadialImage =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        BufferedImage volcanoCraterImage =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        BufferedImage volcanoUpliftImage =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
         CascadeMorphologySampler sampler =
                 new CascadeMorphologySampler(
                         seed,
-                        plan.cascadeMountainSystem()
+                        plan.cascadeMountainSystem(),
+                        world
                 );
 
         for (int z = 0; z < size; z++) {
@@ -1010,6 +1078,37 @@ public final class PreviewWriter {
                                         * 255.0
                         );
 
+                int volcanoReliefGray =
+                        clamp255(
+                                sample.volcanoRelief()
+                                        * 255.0
+                        );
+
+                int volcanoUpperConeGray =
+                        clamp255(
+                                sample.volcanoUpperCone()
+                                        * 255.0
+                        );
+
+                int volcanoRadialGray =
+                        clamp255(
+                                sample.volcanoRadialStructure()
+                                        * 255.0
+                        );
+
+                int volcanoCraterGray =
+                        clamp255(
+                                sample.volcanoCraterMask()
+                                        * 255.0
+                        );
+
+                int volcanoUpliftGray =
+                        clamp255(
+                                sample.volcanoUplift()
+                                        / (plan.mountainSystem().maximumUplift() * 2.30)
+                                        * 255.0
+                        );
+
                 envelopeImage.setRGB(
                         x,
                         z,
@@ -1056,6 +1155,46 @@ public final class PreviewWriter {
                         (peakGray << 16)
                                 | (peakGray << 8)
                                 | peakGray
+                );
+
+                volcanoReliefImage.setRGB(
+                        x,
+                        z,
+                        (volcanoReliefGray << 16)
+                                | (volcanoReliefGray << 8)
+                                | volcanoReliefGray
+                );
+
+                volcanoUpperConeImage.setRGB(
+                        x,
+                        z,
+                        (volcanoUpperConeGray << 16)
+                                | (volcanoUpperConeGray << 8)
+                                | volcanoUpperConeGray
+                );
+
+                volcanoRadialImage.setRGB(
+                        x,
+                        z,
+                        (volcanoRadialGray << 16)
+                                | (volcanoRadialGray << 8)
+                                | volcanoRadialGray
+                );
+
+                volcanoCraterImage.setRGB(
+                        x,
+                        z,
+                        (volcanoCraterGray << 16)
+                                | (volcanoCraterGray << 8)
+                                | volcanoCraterGray
+                );
+
+                volcanoUpliftImage.setRGB(
+                        x,
+                        z,
+                        (volcanoUpliftGray << 16)
+                                | (volcanoUpliftGray << 8)
+                                | volcanoUpliftGray
                 );
             }
         }
@@ -1107,8 +1246,287 @@ public final class PreviewWriter {
                         "cascade-peak-relief.png"
                 ).toFile()
         );
+
+        ImageIO.write(
+                volcanoReliefImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-volcano-relief.png"
+                ).toFile()
+        );
+
+        ImageIO.write(
+                volcanoUpperConeImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-volcano-upper-cone.png"
+                ).toFile()
+        );
+
+        ImageIO.write(
+                volcanoRadialImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-volcano-radial-structure.png"
+                ).toFile()
+        );
+
+        ImageIO.write(
+                volcanoCraterImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-volcano-crater-mask.png"
+                ).toFile()
+        );
+
+        ImageIO.write(
+                volcanoUpliftImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-volcano-uplift.png"
+                ).toFile()
+        );
     }
 
+
+    private static void writeCascadeVolcanoDetail(
+            WorldBlueprint world,
+            long seed,
+            ContinentPlan plan,
+            Path directory
+    ) throws IOException {
+        final int detailSize =
+                512;
+
+        CascadeMorphologySampler sampler =
+                new CascadeMorphologySampler(
+                        seed,
+                        plan.cascadeMountainSystem(),
+                        world
+                );
+
+        CascadeVolcano volcano =
+                sampler.landmarkVolcano();
+
+        SpineFrame frame =
+                frameAtArc(
+                        plan.cascadeMountainSystem().spine(),
+                        volcano.arcPosition()
+                );
+
+        double halfExtent =
+                volcano.maximumRadius()
+                        * 1.18;
+
+        BufferedImage reliefImage =
+                new BufferedImage(
+                        detailSize,
+                        detailSize,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        BufferedImage radialImage =
+                new BufferedImage(
+                        detailSize,
+                        detailSize,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        BufferedImage craterImage =
+                new BufferedImage(
+                        detailSize,
+                        detailSize,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < detailSize; z++) {
+            for (int x = 0; x < detailSize; x++) {
+                double crossOffset =
+                        lerp(
+                                -halfExtent,
+                                halfExtent,
+                                (x + 0.5) / detailSize
+                        );
+
+                double alongOffset =
+                        lerp(
+                                -halfExtent,
+                                halfExtent,
+                                (z + 0.5) / detailSize
+                        );
+
+                double nx =
+                        frame.x()
+                                - frame.tangentZ() * crossOffset
+                                + frame.tangentX() * alongOffset;
+
+                double nz =
+                        frame.z()
+                                + frame.tangentX() * crossOffset
+                                + frame.tangentZ() * alongOffset;
+
+                CascadeMorphologySample sample =
+                        sampler.sample(
+                                nx,
+                                nz
+                        );
+
+                int reliefGray =
+                        clamp255(
+                                sample.volcanoRelief()
+                                        * 255.0
+                        );
+
+                int radialGray =
+                        clamp255(
+                                sample.volcanoRadialStructure()
+                                        * 255.0
+                        );
+
+                int craterGray =
+                        clamp255(
+                                sample.volcanoCraterMask()
+                                        * 255.0
+                        );
+
+                reliefImage.setRGB(
+                        x,
+                        z,
+                        (reliefGray << 16)
+                                | (reliefGray << 8)
+                                | reliefGray
+                );
+
+                radialImage.setRGB(
+                        x,
+                        z,
+                        (radialGray << 16)
+                                | (radialGray << 8)
+                                | radialGray
+                );
+
+                craterImage.setRGB(
+                        x,
+                        z,
+                        (craterGray << 16)
+                                | (craterGray << 8)
+                                | craterGray
+                );
+            }
+        }
+
+        ImageIO.write(
+                reliefImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-volcano-detail-relief.png"
+                ).toFile()
+        );
+
+        ImageIO.write(
+                radialImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-volcano-detail-radial.png"
+                ).toFile()
+        );
+
+        ImageIO.write(
+                craterImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-volcano-detail-crater.png"
+                ).toFile()
+        );
+    }
+
+    private static SpineFrame frameAtArc(
+            MountainSpine spine,
+            double arcPosition
+    ) {
+        List<GeoPoint> points =
+                spine.points();
+
+        double target =
+                Math.max(
+                        0.0,
+                        Math.min(
+                                spine.totalLength(),
+                                arcPosition
+                        )
+                );
+
+        double running =
+                0.0;
+
+        for (int i = 0; i < points.size() - 1; i++) {
+            GeoPoint a =
+                    points.get(i);
+
+            GeoPoint b =
+                    points.get(i + 1);
+
+            double dx =
+                    b.x() - a.x();
+
+            double dz =
+                    b.z() - a.z();
+
+            double length =
+                    Math.hypot(dx, dz);
+
+            if (length <= 1.0e-12) {
+                continue;
+            }
+
+            if (running + length >= target || i == points.size() - 2) {
+                double t =
+                        Math.max(
+                                0.0,
+                                Math.min(
+                                        1.0,
+                                        (target - running) / length
+                                )
+                        );
+
+                return new SpineFrame(
+                        lerp(a.x(), b.x(), t),
+                        lerp(a.z(), b.z(), t),
+                        dx / length,
+                        dz / length
+                );
+            }
+
+            running +=
+                    length;
+        }
+
+        GeoPoint last =
+                points.getLast();
+
+        return new SpineFrame(
+                last.x(),
+                last.z(),
+                0.0,
+                1.0
+        );
+    }
+
+    private static double lerp(
+            double a,
+            double b,
+            double t
+    ) {
+        return a + (b - a) * t;
+    }
+
+    private record SpineFrame(
+            double x,
+            double z,
+            double tangentX,
+            double tangentZ
+    ) {
+    }
 
     private static void writeTerrainProvinces(
             WorldBlueprint world,

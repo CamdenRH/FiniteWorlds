@@ -1,0 +1,1021 @@
+--- a/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/geography/CascadeVolcano.java
++++ b/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/geography/CascadeVolcano.java
+@@ -8,16 +8,31 @@
+  * while arcPosition is distance along the spine.
+  *
+  * The landmark volcano intentionally owns a vertical budget that is separate
+- * from ordinary Cascade uplift.  This lets normal mountains retain their
++ * from ordinary Cascade uplift. This lets normal mountains retain their
+  * existing hierarchy while guaranteeing one summit that is unmistakably
+  * dominant at world scale.
++ *
++ * Pass 2 also stores stable morphology controls. These are not final erosion
++ * products; they define the volcanic edifice that later hydrology, glaciers,
++ * and geology will modify.
+  */
+ public record CascadeVolcano(
+         double signedDistance,
+         double arcPosition,
+         double radiusAcross,
+         double radiusAlong,
+-        double heightMultiplier
++        double heightMultiplier,
++        double rotationRadians,
++        double asymmetry,
++        double asymmetryPhase,
++        double summitOffsetAcross,
++        double summitOffsetAlong,
++        int buttressCount,
++        double buttressPhase,
++        double buttressStrength,
++        double craterRadiusFraction,
++        double craterDepthFraction,
++        double flankRoughness
+ ) {
+ 
+     public double maximumRadius() {
+--- a/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/geography/CascadeVolcanoPlanner.java
++++ b/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/geography/CascadeVolcanoPlanner.java
+@@ -9,9 +9,10 @@
+ /**
+  * Plans the single globally dominant Cascade volcano.
+  *
+- * Pass 1 deliberately focuses on placement, footprint, and vertical authority.
+- * Craters, flank asymmetry, radial drainage, glacial carving, and volcanic
+- * geology belong to later morphology passes.
++ * Pass 1 established placement, footprint, and vertical authority. Pass 2
++ * adds stable edifice controls for asymmetric flanks, summit displacement,
++ * radial buttresses, and a modest summit crater. Hydrology, glacial carving,
++ * lava-flow geology, and true erosional valleys remain later systems.
+  */
+ public final class CascadeVolcanoPlanner {
+ 
+@@ -198,12 +199,97 @@
+                         2.30
+                 );
+ 
++        /*
++         * Pass-2 morphology controls. These are deliberately conservative
++         * enough to preserve the singular stratovolcano silhouette while
++         * ensuring the edifice is not a mathematically perfect cone.
++         */
++        double rotationRadians =
++                range(
++                        random,
++                        -Math.PI,
++                        Math.PI
++                );
++
++        double asymmetry =
++                range(
++                        random,
++                        0.075,
++                        0.145
++                );
++
++        double asymmetryPhase =
++                range(
++                        random,
++                        -Math.PI,
++                        Math.PI
++                );
++
++        double summitOffsetAcross =
++                triangular(random)
++                        * best.radiusAcross()
++                        * range(random, 0.035, 0.085);
++
++        double summitOffsetAlong =
++                triangular(random)
++                        * best.radiusAlong()
++                        * range(random, 0.035, 0.085);
++
++        int buttressCount =
++                7 + random.nextInt(5);
++
++        double buttressPhase =
++                range(
++                        random,
++                        -Math.PI,
++                        Math.PI
++                );
++
++        double buttressStrength =
++                range(
++                        random,
++                        0.035,
++                        0.070
++                );
++
++        double craterRadiusFraction =
++                range(
++                        random,
++                        0.060,
++                        0.092
++                );
++
++        double craterDepthFraction =
++                range(
++                        random,
++                        0.045,
++                        0.075
++                );
++
++        double flankRoughness =
++                range(
++                        random,
++                        0.025,
++                        0.050
++                );
++
+         return new CascadeVolcano(
+                 best.signedDistance(),
+                 best.arcPosition(),
+                 best.radiusAcross(),
+                 best.radiusAlong(),
+-                heightMultiplier
++                heightMultiplier,
++                rotationRadians,
++                asymmetry,
++                asymmetryPhase,
++                summitOffsetAcross,
++                summitOffsetAlong,
++                buttressCount,
++                buttressPhase,
++                buttressStrength,
++                craterRadiusFraction,
++                craterDepthFraction,
++                flankRoughness
+         );
+     }
+ 
+--- a/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/geography/CascadeMorphologySample.java
++++ b/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/geography/CascadeMorphologySample.java
+@@ -3,7 +3,7 @@
+ /**
+  * Decomposed Cascade mountain morphology for one normalized world position.
+  *
+- * Normalized morphology masks use 0..1.  volcanoUplift and uplift are
++ * Normalized morphology masks use 0..1. volcanoUplift and uplift are
+  * expressed in terrain elevation units and are ready to be added to the macro
+  * elevation field (subject to any shoreline fade applied by the caller).
+  */
+@@ -15,6 +15,9 @@
+         double ridgeRelief,
+         double peakRelief,
+         double volcanoRelief,
++        double volcanoUpperCone,
++        double volcanoRadialStructure,
++        double volcanoCraterMask,
+         double volcanoUplift,
+         double passSuppression,
+         double uplift
+@@ -25,6 +28,9 @@
+                 0.0,
+                 0.0,
+                 0.0,
++                0.0,
++                0.0,
++                0.0,
+                 0.0,
+                 0.0,
+                 0.0,
+--- a/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/geography/CascadeMorphologySampler.java
++++ b/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/geography/CascadeMorphologySampler.java
+@@ -38,6 +38,7 @@
+     private final ValueNoise rangeReliefNoise;
+     private final ValueNoise rangeWarpNoise;
+     private final ValueNoise regionalHeightNoise;
++    private final ValueNoise volcanoMorphologyNoise;
+     private final ValueNoise passNoise;
+ 
+     private final List<CascadeMassif> massifs;
+@@ -120,6 +121,14 @@
+                         )
+                 );
+ 
++        this.volcanoMorphologyNoise =
++                new ValueNoise(
++                        SeedUtil.derive(
++                                morphologySeed,
++                                "landmark-volcano-morphology"
++                        )
++                );
++
+         this.passNoise =
+                 new ValueNoise(
+                         SeedUtil.derive(
+@@ -497,12 +506,15 @@
+          * is not another ordinary CascadePeak: every world receives exactly
+          * one, and its summit is allowed to rise far above maximumUplift.
+          */
+-        double volcanoRelief =
+-                volcanoField(
++        VolcanoMorphology volcanoMorphology =
++                volcanoMorphology(
+                         signedCascadeDistance,
+                         arcPosition
+                 );
+ 
++        double volcanoRelief =
++                volcanoMorphology.relief();
++
+         double volcanoUplift =
+                 cascadeSystem.maximumUplift()
+                         * landmarkVolcano.heightMultiplier()
+@@ -597,11 +609,7 @@
+          * of the surrounding Cascades.
+          */
+         double volcanoDominance =
+-                smoothstep(
+-                        0.28,
+-                        0.78,
+-                        volcanoRelief
+-                );
++                volcanoMorphology.dominance();
+ 
+         ordinaryUplift *=
+                 1.0
+@@ -622,6 +630,9 @@
+                 ridgeRelief,
+                 peakRelief,
+                 volcanoRelief,
++                volcanoMorphology.upperCone(),
++                volcanoMorphology.radialStructure(),
++                volcanoMorphology.craterMask(),
+                 volcanoUplift,
+                 passSuppression,
+                 uplift
+@@ -1093,7 +1104,7 @@
+      * =============================================================
+      */
+ 
+-    private double volcanoField(
++    private VolcanoMorphology volcanoMorphology(
+             double signedDistance,
+             double arcPosition
+     ) {
+@@ -1107,38 +1118,321 @@
+                         - landmarkVolcano.arcPosition())
+                         / landmarkVolcano.radiusAlong();
+ 
+-        double radius =
+-                Math.hypot(
+-                        normalizedAcross,
+-                        normalizedAlong
++        double rotation =
++                landmarkVolcano.rotationRadians();
++
++        double cosine =
++                Math.cos(rotation);
++
++        double sine =
++                Math.sin(rotation);
++
++        double localX =
++                normalizedAcross * cosine
++                        + normalizedAlong * sine;
++
++        double localY =
++                -normalizedAcross * sine
++                        + normalizedAlong * cosine;
++
++        double angle =
++                Math.atan2(
++                        localY,
++                        localX
+                 );
+ 
+-        if (radius >= 1.0) {
+-            return 0.0;
++        /*
++         * Warp the footprint directionally instead of scaling both axes by
++         * one constant. This creates a broad favored flank and a steeper
++         * opposing flank while keeping the world-scale footprint intact.
++         */
++        double directionalStretch =
++                1.0
++                        + landmarkVolcano.asymmetry()
++                        * Math.cos(
++                        angle
++                                - landmarkVolcano.asymmetryPhase()
++                )
++                        + landmarkVolcano.asymmetry()
++                        * 0.28
++                        * Math.cos(
++                        angle * 2.0
++                                + landmarkVolcano.asymmetryPhase() * 0.65
++                );
++
++        directionalStretch =
++                clamp(
++                        directionalStretch,
++                        0.78,
++                        1.24
++                );
++
++        double baseRadius =
++                Math.hypot(
++                        localX,
++                        localY
++                ) / directionalStretch;
++
++        if (baseRadius >= 1.0) {
++            return VolcanoMorphology.empty();
+         }
+ 
+         double remaining =
+-                1.0 - radius;
++                1.0 - baseRadius;
+ 
+         /*
+-         * A broad lower cone plus a steeper upper cone produces the Pass-1
+-         * stratovolcano silhouette.  No crater or erosional asymmetry yet.
++         * Lower apron: broad and comparatively gentle. This remains the
++         * principal large-scale silhouette and ensures the volcano merges
++         * into the surrounding Cascade terrain instead of sitting on it.
+          */
+-        double broadCone =
++        double lowerApron =
+                 Math.pow(
+                         remaining,
+-                        1.16
++                        1.12
++                );
++
++        double offsetAcross =
++                landmarkVolcano.summitOffsetAcross()
++                        / landmarkVolcano.radiusAcross();
++
++        double offsetAlong =
++                landmarkVolcano.summitOffsetAlong()
++                        / landmarkVolcano.radiusAlong();
++
++        double offsetX =
++                offsetAcross * cosine
++                        + offsetAlong * sine;
++
++        double offsetY =
++                -offsetAcross * sine
++                        + offsetAlong * cosine;
++
++        /*
++         * Upper cone: steeper, narrower, and slightly displaced from the
++         * center of the lower apron. The offset is intentionally subtle; its
++         * job is to create unequal flank lengths, not a visibly bent cone.
++         */
++        double upperX =
++                (localX - offsetX)
++                        / 0.47;
++
++        double upperY =
++                (localY - offsetY)
++                        / 0.43;
++
++        double upperRadius =
++                Math.hypot(
++                        upperX,
++                        upperY
+                 );
+ 
+         double upperCone =
+-                Math.pow(
+-                        remaining,
+-                        2.75
++                upperRadius < 1.0
++                        ? Math.pow(
++                        1.0 - upperRadius,
++                        1.72
++                )
++                        : 0.0;
++
++        double relief =
++                lowerApron * 0.66
++                        + upperCone * 0.37;
++
++        /*
++         * Alternating buttresses and shallow radial swales establish the
++         * drainage predisposition of a mature stratovolcano without actually
++         * carving rivers. Hydrology can later preferentially occupy the
++         * negative portions of this pattern.
++         */
++        double angularWarp =
++                volcanoMorphologyNoise.fbm(
++                        localX * 2.35 + 13.0,
++                        localY * 2.35 - 31.0,
++                        2,
++                        2.0,
++                        0.52
++                ) * 0.11;
++
++        double twistedAngle =
++                angle
++                        + angularWarp
++                        + Math.sin(
++                        baseRadius * Math.PI * 1.7
++                                + landmarkVolcano.buttressPhase()
++                ) * 0.045
++                        + baseRadius
++                        * 0.055
++                        * Math.sin(
++                        landmarkVolcano.asymmetryPhase()
++                );
++
++        double radialPrimary =
++                Math.cos(
++                        twistedAngle
++                                * landmarkVolcano.buttressCount()
++                                + landmarkVolcano.buttressPhase()
++                                + baseRadius * 0.55
++                );
++
++        double radialSecondary =
++                Math.cos(
++                        twistedAngle
++                                * (landmarkVolcano.buttressCount() + 3)
++                                - landmarkVolcano.buttressPhase() * 0.72
++                                - baseRadius * 0.90
++                );
++
++        double radialTertiary =
++                Math.cos(
++                        twistedAngle
++                                * Math.max(
++                                4,
++                                landmarkVolcano.buttressCount() - 3
++                        )
++                                + landmarkVolcano.buttressPhase() * 1.31
++                                + baseRadius * 1.15
+                 );
+ 
+-        return clamp01(
+-                broadCone * 0.78
+-                        + upperCone * 0.22
++        double radialSignal =
++                radialPrimary * 0.50
++                        + radialSecondary * 0.30
++                        + radialTertiary * 0.20;
++
++        double radialWindow =
++                smoothstep(
++                        0.14,
++                        0.31,
++                        baseRadius
++                )
++                        * (
++                        1.0
++                                - smoothstep(
++                                0.78,
++                                0.98,
++                                baseRadius
++                        )
++                );
++
++        double radialDisplacement =
++                radialSignal
++                        * radialWindow
++                        * landmarkVolcano.buttressStrength()
++                        * (0.52 + remaining * 0.48);
++
++        relief +=
++                radialDisplacement;
++
++        /*
++         * Low-amplitude coherent flank roughness breaks the perfect analytic
++         * surface without replacing geomorphology with raw noise. It is kept
++         * away from both the summit and the outermost apron.
++         */
++        double roughnessSignal =
++                volcanoMorphologyNoise.fbm(
++                        localX * 4.8 + 37.0,
++                        localY * 4.8 - 19.0,
++                        3,
++                        2.0,
++                        0.50
++                );
++
++        double roughnessWindow =
++                smoothstep(
++                        0.18,
++                        0.36,
++                        baseRadius
++                )
++                        * (
++                        1.0
++                                - smoothstep(
++                                0.76,
++                                0.97,
++                                baseRadius
++                        )
++                );
++
++        relief +=
++                roughnessSignal
++                        * landmarkVolcano.flankRoughness()
++                        * roughnessWindow;
++
++        /*
++         * Summit crater. The crater is intentionally small compared with the
++         * edifice and leaves a high rim, so the volcano remains the world's
++         * dominant summit while gaining a recognizable volcanic cap.
++         */
++        double craterRadius =
++                landmarkVolcano.craterRadiusFraction();
++
++        double craterX =
++                (localX - offsetX)
++                        / craterRadius;
++
++        double craterY =
++                (localY - offsetY)
++                        / (craterRadius * 0.86);
++
++        double craterDistance =
++                Math.hypot(
++                        craterX,
++                        craterY
++                );
++
++        double craterMask =
++                1.0
++                        - smoothstep(
++                        0.0,
++                        0.78,
++                        craterDistance
++                );
++
++        double craterRim =
++                smoothstep(
++                        0.48,
++                        0.82,
++                        craterDistance
++                )
++                        * (
++                        1.0
++                                - smoothstep(
++                                0.82,
++                                1.22,
++                                craterDistance
++                        )
++                );
++
++        relief +=
++                craterRim * 0.030;
++
++        relief -=
++                craterMask
++                        * landmarkVolcano.craterDepthFraction();
++
++        /*
++         * Dominance intentionally ignores the crater and radial swales. This
++         * prevents ordinary Cascade peak/ridge noise from poking through the
++         * volcanic edifice wherever the Pass-2 surface has a depression.
++         */
++        double dominance =
++                smoothstep(
++                        0.28,
++                        0.78,
++                        lowerApron * 0.78
++                                + upperCone * 0.22
++                );
++
++        double radialStructure =
++                clamp01(
++                        (radialSignal * 0.5 + 0.5)
++                                * radialWindow
++                );
++
++        return new VolcanoMorphology(
++                clamp01(relief),
++                clamp01(upperCone),
++                radialStructure,
++                clamp01(craterMask),
++                clamp01(dominance)
+         );
+     }
+ 
+@@ -2182,6 +2476,26 @@
+         );
+     }
+ 
++
++    private record VolcanoMorphology(
++            double relief,
++            double upperCone,
++            double radialStructure,
++            double craterMask,
++            double dominance
++    ) {
++
++        private static VolcanoMorphology empty() {
++            return new VolcanoMorphology(
++                    0.0,
++                    0.0,
++                    0.0,
++                    0.0,
++                    0.0
++            );
++        }
++    }
++
+     private record RidgeNode(
+             double outward,
+             double arc,
+--- a/worldgen-tools/src/main/java/dev/lemma/finiteworlds/tools/PreviewWriter.java
++++ b/worldgen-tools/src/main/java/dev/lemma/finiteworlds/tools/PreviewWriter.java
+@@ -3,15 +3,19 @@
+ import dev.lemma.finiteworlds.core.WorldBlueprint;
+ import dev.lemma.finiteworlds.core.geography.CascadeMorphologySample;
+ import dev.lemma.finiteworlds.core.geography.CascadeMorphologySampler;
+-import dev.lemma.finiteworlds.core.terrain.TerrainSampler;
++import dev.lemma.finiteworlds.core.geography.CascadeVolcano;
+ import dev.lemma.finiteworlds.core.geography.ContinentPlan;
++import dev.lemma.finiteworlds.core.geography.GeoPoint;
++import dev.lemma.finiteworlds.core.geography.MountainSpine;
+ import dev.lemma.finiteworlds.core.geography.TerrainProvince;
++import dev.lemma.finiteworlds.core.terrain.TerrainSampler;
+ 
+ import javax.imageio.ImageIO;
+ import java.awt.image.BufferedImage;
+ import java.io.IOException;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
++import java.util.List;
+ 
+ public final class PreviewWriter {
+ 
+@@ -159,6 +163,13 @@
+                 directory
+         );
+ 
++        writeCascadeVolcanoDetail(
++                world,
++                seed,
++                plan,
++                directory
++        );
++
+         writeScalarField(
+                 world,
+                 directory.resolve(
+@@ -971,6 +982,27 @@
+                         BufferedImage.TYPE_INT_RGB
+                 );
+ 
++        BufferedImage volcanoUpperConeImage =
++                new BufferedImage(
++                        size,
++                        size,
++                        BufferedImage.TYPE_INT_RGB
++                );
++
++        BufferedImage volcanoRadialImage =
++                new BufferedImage(
++                        size,
++                        size,
++                        BufferedImage.TYPE_INT_RGB
++                );
++
++        BufferedImage volcanoCraterImage =
++                new BufferedImage(
++                        size,
++                        size,
++                        BufferedImage.TYPE_INT_RGB
++                );
++
+         BufferedImage volcanoUpliftImage =
+                 new BufferedImage(
+                         size,
+@@ -1052,6 +1084,24 @@
+                                         * 255.0
+                         );
+ 
++                int volcanoUpperConeGray =
++                        clamp255(
++                                sample.volcanoUpperCone()
++                                        * 255.0
++                        );
++
++                int volcanoRadialGray =
++                        clamp255(
++                                sample.volcanoRadialStructure()
++                                        * 255.0
++                        );
++
++                int volcanoCraterGray =
++                        clamp255(
++                                sample.volcanoCraterMask()
++                                        * 255.0
++                        );
++
+                 int volcanoUpliftGray =
+                         clamp255(
+                                 sample.volcanoUplift()
+@@ -1115,6 +1165,30 @@
+                                 | volcanoReliefGray
+                 );
+ 
++                volcanoUpperConeImage.setRGB(
++                        x,
++                        z,
++                        (volcanoUpperConeGray << 16)
++                                | (volcanoUpperConeGray << 8)
++                                | volcanoUpperConeGray
++                );
++
++                volcanoRadialImage.setRGB(
++                        x,
++                        z,
++                        (volcanoRadialGray << 16)
++                                | (volcanoRadialGray << 8)
++                                | volcanoRadialGray
++                );
++
++                volcanoCraterImage.setRGB(
++                        x,
++                        z,
++                        (volcanoCraterGray << 16)
++                                | (volcanoCraterGray << 8)
++                                | volcanoCraterGray
++                );
++
+                 volcanoUpliftImage.setRGB(
+                         x,
+                         z,
+@@ -1182,6 +1256,30 @@
+         );
+ 
+         ImageIO.write(
++                volcanoUpperConeImage,
++                "PNG",
++                directory.resolve(
++                        "cascade-volcano-upper-cone.png"
++                ).toFile()
++        );
++
++        ImageIO.write(
++                volcanoRadialImage,
++                "PNG",
++                directory.resolve(
++                        "cascade-volcano-radial-structure.png"
++                ).toFile()
++        );
++
++        ImageIO.write(
++                volcanoCraterImage,
++                "PNG",
++                directory.resolve(
++                        "cascade-volcano-crater-mask.png"
++                ).toFile()
++        );
++
++        ImageIO.write(
+                 volcanoUpliftImage,
+                 "PNG",
+                 directory.resolve(
+@@ -1191,6 +1289,245 @@
+     }
+ 
+ 
++    private static void writeCascadeVolcanoDetail(
++            WorldBlueprint world,
++            long seed,
++            ContinentPlan plan,
++            Path directory
++    ) throws IOException {
++        final int detailSize =
++                512;
++
++        CascadeMorphologySampler sampler =
++                new CascadeMorphologySampler(
++                        seed,
++                        plan.cascadeMountainSystem(),
++                        world
++                );
++
++        CascadeVolcano volcano =
++                sampler.landmarkVolcano();
++
++        SpineFrame frame =
++                frameAtArc(
++                        plan.cascadeMountainSystem().spine(),
++                        volcano.arcPosition()
++                );
++
++        double halfExtent =
++                volcano.maximumRadius()
++                        * 1.18;
++
++        BufferedImage reliefImage =
++                new BufferedImage(
++                        detailSize,
++                        detailSize,
++                        BufferedImage.TYPE_INT_RGB
++                );
++
++        BufferedImage radialImage =
++                new BufferedImage(
++                        detailSize,
++                        detailSize,
++                        BufferedImage.TYPE_INT_RGB
++                );
++
++        BufferedImage craterImage =
++                new BufferedImage(
++                        detailSize,
++                        detailSize,
++                        BufferedImage.TYPE_INT_RGB
++                );
++
++        for (int z = 0; z < detailSize; z++) {
++            for (int x = 0; x < detailSize; x++) {
++                double crossOffset =
++                        lerp(
++                                -halfExtent,
++                                halfExtent,
++                                (x + 0.5) / detailSize
++                        );
++
++                double alongOffset =
++                        lerp(
++                                -halfExtent,
++                                halfExtent,
++                                (z + 0.5) / detailSize
++                        );
++
++                double nx =
++                        frame.x()
++                                - frame.tangentZ() * crossOffset
++                                + frame.tangentX() * alongOffset;
++
++                double nz =
++                        frame.z()
++                                + frame.tangentX() * crossOffset
++                                + frame.tangentZ() * alongOffset;
++
++                CascadeMorphologySample sample =
++                        sampler.sample(
++                                nx,
++                                nz
++                        );
++
++                int reliefGray =
++                        clamp255(
++                                sample.volcanoRelief()
++                                        * 255.0
++                        );
++
++                int radialGray =
++                        clamp255(
++                                sample.volcanoRadialStructure()
++                                        * 255.0
++                        );
++
++                int craterGray =
++                        clamp255(
++                                sample.volcanoCraterMask()
++                                        * 255.0
++                        );
++
++                reliefImage.setRGB(
++                        x,
++                        z,
++                        (reliefGray << 16)
++                                | (reliefGray << 8)
++                                | reliefGray
++                );
++
++                radialImage.setRGB(
++                        x,
++                        z,
++                        (radialGray << 16)
++                                | (radialGray << 8)
++                                | radialGray
++                );
++
++                craterImage.setRGB(
++                        x,
++                        z,
++                        (craterGray << 16)
++                                | (craterGray << 8)
++                                | craterGray
++                );
++            }
++        }
++
++        ImageIO.write(
++                reliefImage,
++                "PNG",
++                directory.resolve(
++                        "cascade-volcano-detail-relief.png"
++                ).toFile()
++        );
++
++        ImageIO.write(
++                radialImage,
++                "PNG",
++                directory.resolve(
++                        "cascade-volcano-detail-radial.png"
++                ).toFile()
++        );
++
++        ImageIO.write(
++                craterImage,
++                "PNG",
++                directory.resolve(
++                        "cascade-volcano-detail-crater.png"
++                ).toFile()
++        );
++    }
++
++    private static SpineFrame frameAtArc(
++            MountainSpine spine,
++            double arcPosition
++    ) {
++        List<GeoPoint> points =
++                spine.points();
++
++        double target =
++                Math.max(
++                        0.0,
++                        Math.min(
++                                spine.totalLength(),
++                                arcPosition
++                        )
++                );
++
++        double running =
++                0.0;
++
++        for (int i = 0; i < points.size() - 1; i++) {
++            GeoPoint a =
++                    points.get(i);
++
++            GeoPoint b =
++                    points.get(i + 1);
++
++            double dx =
++                    b.x() - a.x();
++
++            double dz =
++                    b.z() - a.z();
++
++            double length =
++                    Math.hypot(dx, dz);
++
++            if (length <= 1.0e-12) {
++                continue;
++            }
++
++            if (running + length >= target || i == points.size() - 2) {
++                double t =
++                        Math.max(
++                                0.0,
++                                Math.min(
++                                        1.0,
++                                        (target - running) / length
++                                )
++                        );
++
++                return new SpineFrame(
++                        lerp(a.x(), b.x(), t),
++                        lerp(a.z(), b.z(), t),
++                        dx / length,
++                        dz / length
++                );
++            }
++
++            running +=
++                    length;
++        }
++
++        GeoPoint last =
++                points.getLast();
++
++        return new SpineFrame(
++                last.x(),
++                last.z(),
++                0.0,
++                1.0
++        );
++    }
++
++    private static double lerp(
++            double a,
++            double b,
++            double t
++    ) {
++        return a + (b - a) * t;
++    }
++
++    private record SpineFrame(
++            double x,
++            double z,
++            double tangentX,
++            double tangentZ
++    ) {
++    }
++
+     private static void writeTerrainProvinces(
+             WorldBlueprint world,
+             Path path

@@ -81,15 +81,15 @@ public final class ContinentPlanner {
         double baseRadiusX =
                 range(
                         random,
-                        0.40,
-                        0.46
+                        0.50,
+                        0.56
                 );
 
         double baseRadiusZ =
                 range(
                         random,
-                        0.51,
-                        0.58
+                        0.61,
+                        0.68
                 );
 
         double phase2 =

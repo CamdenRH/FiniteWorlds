@@ -143,7 +143,8 @@ public final class CascadiaGenerator {
         CascadeMorphologySampler cascadeMorphologySampler =
                 new CascadeMorphologySampler(
                         seed,
-                        plan.cascadeMountainSystem()
+                        plan.cascadeMountainSystem(),
+                        blueprint
                 );
 
 
