@@ -73,6 +73,15 @@ public final class DepressionAnalyzer {
                 cellCount
         );
 
+        /*
+         * Preserve the raw sink-catchment assignment for later compound
+         * basin analysis. Pass 1H needs the full contributing catchments,
+         * not only the below-spill depression footprints.
+         */
+        hydrology.setRawCatchmentDepressionIds(
+                terminalDepression
+        );
+
         int depressionCount =
                 sinkIndices.size();
 

@@ -15,8 +15,13 @@ import dev.lemma.finiteworlds.core.geography.PhysiographySampler;
 
 import dev.lemma.finiteworlds.core.noise.ValueNoise;
 import dev.lemma.finiteworlds.core.hydrology.DepressionAnalyzer;
+import dev.lemma.finiteworlds.core.hydrology.DrainageRouter;
 import dev.lemma.finiteworlds.core.hydrology.DepressionClassifier;
+import dev.lemma.finiteworlds.core.hydrology.CompoundBasinAnalyzer;
+import dev.lemma.finiteworlds.core.hydrology.DepressionResolutionPlanner;
+import dev.lemma.finiteworlds.core.hydrology.HydrologyConditioner;
 import dev.lemma.finiteworlds.core.hydrology.HydrologyPlanner;
+import dev.lemma.finiteworlds.core.hydrology.LakePlanner;
 
 
 public final class CascadiaGenerator {
@@ -292,6 +297,56 @@ public final class CascadiaGenerator {
          * terrain and D8 directions are still untouched.
          */
         DepressionClassifier.classify(
+                blueprint
+        );
+
+        /*
+         * Pass 1E proposes a non-destructive resolution policy for every
+         * classified basin. Elevation and flow direction remain untouched;
+         * this policy is previewed before any conditioning is implemented.
+         */
+        DepressionResolutionPlanner.plan(
+                blueprint
+        );
+
+        /*
+         * Pass 1G extends the working-surface conditioning to BREACH basins.
+         * FILL basins retain the safe Pass 1F treatment; eligible BREACH
+         * basins receive narrow descending channels through their measured
+         * spill saddles. Lake and compound systems remain untouched, and the
+         * authored terrain elevation is still never modified here.
+         */
+        HydrologyConditioner.applyFillAndBreach(
+                blueprint
+        );
+
+        /*
+         * Pass 1H collapses cyclic first-spill groups into coherent compound
+         * hydrologic basins and measures the lowest saddle that escapes each
+         * combined catchment. This is diagnostic only; no additional terrain
+         * conditioning occurs in this pass.
+         */
+        CompoundBasinAnalyzer.analyze(
+                blueprint
+        );
+
+        /*
+         * Pass 1I turns the already-approved PRESERVE_LAKE depressions and
+         * the strongest suitable compound basins into explicit hydrologic
+         * Lake objects. This remains non-destructive: no terrain elevation
+         * is changed and no Minecraft water is placed yet.
+         */
+        LakePlanner.plan(
+                blueprint
+        );
+
+        /*
+         * Pass 1J converts the conditioned D8 field into the final semantic
+         * drainage graph used by later accumulation. Lake interiors route
+         * toward their explicit outlets and non-lake compound groups receive
+         * one coherent external escape route. Elevation remains unchanged.
+         */
+        DrainageRouter.route(
                 blueprint
         );
 

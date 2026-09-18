@@ -44,6 +44,7 @@ public final class CascadeMorphologySampler {
     private final List<CascadeMassif> massifs;
     private final List<CascadePeak> peaks;
     private final CascadeVolcano landmarkVolcano;
+    private final List<CascadeVolcanicRidge> volcanicRidges;
     private final List<RidgePath> ridgeSpurs;
 
     public CascadeMorphologySampler(
@@ -159,6 +160,12 @@ public final class CascadeMorphologySampler {
                         massifs,
                         peaks,
                         blueprint
+                );
+
+        this.volcanicRidges =
+                CascadeVolcanicRidgePlanner.generate(
+                        worldSeed,
+                        landmarkVolcano
                 );
 
         this.ridgeSpurs =
@@ -518,6 +525,12 @@ public final class CascadeMorphologySampler {
         double volcanoRelief =
                 volcanoMorphology.relief();
 
+        double volcanoStructuralRidgeRelief =
+                volcanoStructuralRidgeField(
+                        signedCascadeDistance,
+                        arcPosition
+                );
+
         double volcanoUplift =
                 cascadeSystem.maximumUplift()
                         * landmarkVolcano.heightMultiplier()
@@ -599,6 +612,11 @@ public final class CascadeMorphologySampler {
                         * 0.24
                         * volcanoFoothillRelief;
 
+        double volcanoStructuralRidgeUplift =
+                maximumUplift
+                        * 0.22
+                        * volcanoStructuralRidgeRelief;
+
         double ordinaryUplift =
                 clamp(
                         broadUplift
@@ -626,6 +644,7 @@ public final class CascadeMorphologySampler {
 
         double uplift =
                 ordinaryUplift
+                        + volcanoStructuralRidgeUplift
                         + volcanoUplift;
 
         return new CascadeMorphologySample(
@@ -639,6 +658,7 @@ public final class CascadeMorphologySampler {
                 ridgeRelief,
                 peakRelief,
                 volcanoFoothillRelief,
+                volcanoStructuralRidgeRelief,
                 volcanoRelief,
                 volcanoMorphology.upperCone(),
                 volcanoMorphology.radialStructure(),
@@ -1515,6 +1535,213 @@ public final class CascadeMorphologySampler {
 
     public CascadeVolcano landmarkVolcano() {
         return landmarkVolcano;
+    }
+
+    /*
+     * =============================================================
+     * VOLCANIC STRUCTURAL RIDGE FIELD
+     * =============================================================
+     *
+     * These paths are the handful of large buttresses that should remain
+     * visible even before hydrology begins carving the volcano. They start on
+     * the middle / upper edifice, cross the volcanic apron, and several extend
+     * into the surrounding Cascade highlands.
+     */
+
+    private double volcanoStructuralRidgeField(
+            double signedDistance,
+            double arcPosition
+    ) {
+        double result =
+                0.0;
+
+        for (CascadeVolcanicRidge ridge : volcanicRidges) {
+            double padding =
+                    ridge.maximumWidth()
+                            * 1.15;
+
+            if (
+                    signedDistance < ridge.minimumSignedDistance() - padding
+                            || signedDistance > ridge.maximumSignedDistance() + padding
+                            || arcPosition < ridge.minimumArc() - padding
+                            || arcPosition > ridge.maximumArc() + padding
+            ) {
+                continue;
+            }
+
+            PathDistance nearest =
+                    closestPointOnVolcanicRidge(
+                            ridge,
+                            signedDistance,
+                            arcPosition
+                    );
+
+            if (nearest == null) {
+                continue;
+            }
+
+            double pathT =
+                    nearest.progress();
+
+            double width =
+                    lerp(
+                            ridge.startWidth(),
+                            ridge.endWidth(),
+                            smoothstep(0.0, 1.0, pathT)
+                    );
+
+            /*
+             * Macro buttresses should have a broad shoulder rather than the
+             * narrow capsule cross-section of ordinary Cascade ridge spurs.
+             */
+            double distance =
+                    Math.sqrt(
+                            nearest.distanceSquared()
+                    );
+
+            double crossSection =
+                    1.0
+                            - smoothstep(
+                            width * 0.18,
+                            width,
+                            distance
+                    );
+
+            double rootFade =
+                    smoothstep(
+                            0.0,
+                            ridge.secondary()
+                                    ? 0.12
+                                    : 0.075,
+                            pathT
+                    );
+
+            double tipFade =
+                    1.0
+                            - smoothstep(
+                            ridge.secondary()
+                                    ? 0.72
+                                    : 0.80,
+                            1.0,
+                            pathT
+                    );
+
+            double longitudinalStrength =
+                    0.72
+                            + (1.0 - pathT) * 0.28;
+
+            double contribution =
+                    ridge.strength()
+                            * crossSection
+                            * rootFade
+                            * tipFade
+                            * longitudinalStrength;
+
+            result =
+                    Math.max(
+                            result,
+                            contribution
+                    );
+        }
+
+        return clamp01(result);
+    }
+
+    private static PathDistance closestPointOnVolcanicRidge(
+            CascadeVolcanicRidge ridge,
+            double signedDistance,
+            double arcPosition
+    ) {
+        List<CascadeVolcanicRidge.Node> nodes =
+                ridge.nodes();
+
+        if (nodes.size() < 2) {
+            return null;
+        }
+
+        double bestDistanceSquared =
+                Double.POSITIVE_INFINITY;
+
+        double bestProgress =
+                0.0;
+
+        for (int i = 0; i < nodes.size() - 1; i++) {
+            CascadeVolcanicRidge.Node a =
+                    nodes.get(i);
+
+            CascadeVolcanicRidge.Node b =
+                    nodes.get(i + 1);
+
+            double dx =
+                    b.signedDistance()
+                            - a.signedDistance();
+
+            double dy =
+                    b.arcPosition()
+                            - a.arcPosition();
+
+            double lengthSquared =
+                    dx * dx
+                            + dy * dy;
+
+            if (lengthSquared <= 1.0e-12) {
+                continue;
+            }
+
+            double segmentT =
+                    (
+                            (signedDistance - a.signedDistance()) * dx
+                                    + (arcPosition - a.arcPosition()) * dy
+                    ) / lengthSquared;
+
+            segmentT =
+                    clamp(
+                            segmentT,
+                            0.0,
+                            1.0
+                    );
+
+            double nearestSigned =
+                    a.signedDistance()
+                            + dx * segmentT;
+
+            double nearestArc =
+                    a.arcPosition()
+                            + dy * segmentT;
+
+            double offsetSigned =
+                    signedDistance
+                            - nearestSigned;
+
+            double offsetArc =
+                    arcPosition
+                            - nearestArc;
+
+            double distanceSquared =
+                    offsetSigned * offsetSigned
+                            + offsetArc * offsetArc;
+
+            if (distanceSquared < bestDistanceSquared) {
+                bestDistanceSquared =
+                        distanceSquared;
+
+                bestProgress =
+                        lerp(
+                                a.progress(),
+                                b.progress(),
+                                segmentT
+                        );
+            }
+        }
+
+        if (!Double.isFinite(bestDistanceSquared)) {
+            return null;
+        }
+
+        return new PathDistance(
+                bestDistanceSquared,
+                bestProgress
+        );
     }
 
     /*

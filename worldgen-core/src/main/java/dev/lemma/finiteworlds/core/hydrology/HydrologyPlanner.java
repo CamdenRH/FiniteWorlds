@@ -40,12 +40,41 @@ public final class HydrologyPlanner {
 
         for (int z = 0; z < size; z++) {
             for (int x = 0; x < size; x++) {
-                assignRawDirection(
+                assignDirection(
                         world,
                         hydrology,
                         x,
                         z,
-                        size
+                        size,
+                        false
+                );
+            }
+        }
+    }
+
+
+    /**
+     * Recomputes D8 flow against the conditioned hydrology surface. The raw
+     * terrain elevation and raw flow field remain unchanged for comparison.
+     */
+    public static void populateConditionedFlow(
+            WorldBlueprint world
+    ) {
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        int size =
+                world.resolution();
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                assignDirection(
+                        world,
+                        hydrology,
+                        x,
+                        z,
+                        size,
+                        true
                 );
             }
         }
@@ -67,26 +96,31 @@ public final class HydrologyPlanner {
         }
     }
 
-    private static void assignRawDirection(
+    private static void assignDirection(
             WorldBlueprint world,
             HydrologyGrid hydrology,
             int x,
             int z,
-            int size
+            int size,
+            boolean conditioned
     ) {
         if (!isLand(world, x, z)) {
-            hydrology.setFlowDirection(
+            setDirection(
+                    hydrology,
                     x,
                     z,
-                    FlowDirection.OCEAN
+                    FlowDirection.OCEAN,
+                    conditioned
             );
             return;
         }
 
         double sourceElevation =
-                hydrology.surfaceElevation(
+                elevation(
+                        hydrology,
                         x,
-                        z
+                        z,
+                        conditioned
                 );
 
         FlowDirection bestDirection =
@@ -124,9 +158,11 @@ public final class HydrologyPlanner {
 
             double drop =
                     sourceElevation
-                            - hydrology.surfaceElevation(
+                            - elevation(
+                            hydrology,
                             nx,
-                            nz
+                            nz,
+                            conditioned
                     );
 
             if (drop <= MINIMUM_DROP) {
@@ -144,10 +180,12 @@ public final class HydrologyPlanner {
         }
 
         if (bestDirection != null) {
-            hydrology.setFlowDirection(
+            setDirection(
+                    hydrology,
                     x,
                     z,
-                    bestDirection
+                    bestDirection,
+                    conditioned
             );
             return;
         }
@@ -160,28 +198,68 @@ public final class HydrologyPlanner {
          * interior depression.
          */
         if (touchesOcean) {
-            hydrology.setFlowDirection(
+            setDirection(
+                    hydrology,
                     x,
                     z,
-                    FlowDirection.OUTLET
+                    FlowDirection.OUTLET,
+                    conditioned
             );
             return;
         }
 
         if (isBoundaryCell(x, z, size)) {
-            hydrology.setFlowDirection(
+            setDirection(
+                    hydrology,
                     x,
                     z,
-                    FlowDirection.OUTLET
+                    FlowDirection.OUTLET,
+                    conditioned
             );
             return;
         }
 
-        hydrology.setFlowDirection(
+        setDirection(
+                hydrology,
                 x,
                 z,
-                FlowDirection.SINK
+                FlowDirection.SINK,
+                conditioned
         );
+    }
+
+
+    private static double elevation(
+            HydrologyGrid hydrology,
+            int x,
+            int z,
+            boolean conditioned
+    ) {
+        return conditioned
+                ? hydrology.conditionedElevation(x, z)
+                : hydrology.surfaceElevation(x, z);
+    }
+
+    private static void setDirection(
+            HydrologyGrid hydrology,
+            int x,
+            int z,
+            FlowDirection direction,
+            boolean conditioned
+    ) {
+        if (conditioned) {
+            hydrology.setConditionedFlowDirection(
+                    x,
+                    z,
+                    direction
+            );
+        } else {
+            hydrology.setFlowDirection(
+                    x,
+                    z,
+                    direction
+            );
+        }
     }
 
     private static boolean isLand(
