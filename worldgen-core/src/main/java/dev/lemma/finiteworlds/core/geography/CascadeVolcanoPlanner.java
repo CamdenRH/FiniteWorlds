@@ -93,22 +93,26 @@ public final class CascadeVolcanoPlanner {
                     );
 
             /*
-             * Prefer a strong mountain shoulder rather than either a deep
-             * pass or the already-dominant center of an existing massif.
+             * T2 moves the landmark volcano deeper into a genuinely
+             * mountainous Cascade context. Pass 1 deliberately preferred a
+             * weak shoulder (~0.48 massif strength), which kept the edifice
+             * clear of major summits but could leave it visually isolated.
+             * Favor strong highland terrain while still avoiding the exact
+             * center of the most dominant massif.
              */
             double shoulderScore =
                     1.0
                             - Math.abs(
-                            localMassifStrength - 0.48
-                    ) / 0.48;
+                            localMassifStrength - 0.72
+                    ) / 0.40;
 
             shoulderScore =
                     clamp01(
                             shoulderScore
                     );
 
-            double regionalPeakClearance =
-                    majorPeakClearance(
+            double majorPeakContext =
+                    majorPeakContextScore(
                             signedDistance,
                             arcPosition,
                             radiusAcross,
@@ -150,10 +154,10 @@ public final class CascadeVolcanoPlanner {
                     );
 
             double score =
-                    shoulderScore * 0.27
-                            + regionalPeakClearance * 0.22
-                            + landRoomScore * 0.33
-                            + edgeScore * 0.08
+                    shoulderScore * 0.33
+                            + majorPeakContext * 0.20
+                            + landRoomScore * 0.30
+                            + edgeScore * 0.07
                             + westShoulderScore * 0.05
                             + random.nextDouble() * 0.05;
 
@@ -328,7 +332,7 @@ public final class CascadeVolcanoPlanner {
         return clamp01(result);
     }
 
-    private static double majorPeakClearance(
+    private static double majorPeakContextScore(
             double signedDistance,
             double arcPosition,
             double radiusAcross,
@@ -366,13 +370,32 @@ public final class CascadeVolcanoPlanner {
         }
 
         if (!Double.isFinite(closestNormalizedDistance)) {
-            return 1.0;
+            return 0.15;
         }
 
-        return smoothstep(
-                0.55,
-                1.45,
-                closestNormalizedDistance
+        /*
+         * Too close would bury an existing major summit; too far recreates
+         * the isolated-volcano problem. Prefer roughly one edifice radius
+         * from an existing major/regional summit.
+         */
+        double minimumClearance =
+                smoothstep(
+                        0.50,
+                        0.92,
+                        closestNormalizedDistance
+                );
+
+        double neighborhoodContext =
+                1.0
+                        - smoothstep(
+                        1.65,
+                        2.65,
+                        closestNormalizedDistance
+                );
+
+        return clamp01(
+                minimumClearance
+                        * neighborhoodContext
         );
     }
 
@@ -398,10 +421,10 @@ public final class CascadeVolcanoPlanner {
                 Double.POSITIVE_INFINITY;
 
         /*
-         * Test the center and a ring just beyond the intended volcanic base.
-         * This prevents the one guaranteed landmark from being clipped by a
-         * bay, sound, or nearby coastline and then suppressed by shoreline
-         * mountain fading.
+         * Test the center and a ring covering the T2 volcanic foothill
+         * transition, not just the formal cone. This prevents the guaranteed
+         * landmark mountain complex from being clipped by a bay, sound, or
+         * nearby coastline.
          */
         minimumCoastDistance =
                 Math.min(
@@ -424,12 +447,12 @@ public final class CascadeVolcanoPlanner {
                     signedDistance
                             + Math.cos(angle)
                             * radiusAcross
-                            * 1.08;
+                            * 1.62;
 
             double alongOffset =
                     Math.sin(angle)
                             * radiusAlong
-                            * 1.08;
+                            * 1.62;
 
             minimumCoastDistance =
                     Math.min(

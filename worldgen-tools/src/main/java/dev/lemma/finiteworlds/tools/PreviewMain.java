@@ -38,7 +38,7 @@ public final class PreviewMain {
         }
 
         WorldConfig config =
-                WorldConfig.quickTest();
+                WorldConfig.production();
 
         CascadiaGenerator generator =
                 new CascadiaGenerator();

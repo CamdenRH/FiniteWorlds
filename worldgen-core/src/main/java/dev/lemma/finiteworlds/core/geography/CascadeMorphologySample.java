@@ -14,6 +14,7 @@ public record CascadeMorphologySample(
         double crestStructure,
         double ridgeRelief,
         double peakRelief,
+        double volcanoFoothillRelief,
         double volcanoRelief,
         double volcanoUpperCone,
         double volcanoRadialStructure,
@@ -25,6 +26,7 @@ public record CascadeMorphologySample(
 
     public static CascadeMorphologySample empty() {
         return new CascadeMorphologySample(
+                0.0,
                 0.0,
                 0.0,
                 0.0,

@@ -512,6 +512,9 @@ public final class CascadeMorphologySampler {
                         arcPosition
                 );
 
+        double volcanoFoothillRelief =
+                volcanoMorphology.foothillRelief();
+
         double volcanoRelief =
                 volcanoMorphology.relief();
 
@@ -591,13 +594,19 @@ public final class CascadeMorphologySampler {
                         * 0.20
                         * peakRelief;
 
+        double volcanoFoothillUplift =
+                maximumUplift
+                        * 0.24
+                        * volcanoFoothillRelief;
+
         double ordinaryUplift =
                 clamp(
                         broadUplift
                                 + rangeDeviation
                                 + crestUplift
                                 + ridgeUplift
-                                + peakUplift,
+                                + peakUplift
+                                + volcanoFoothillUplift,
                         0.0,
                         maximumUplift
                 );
@@ -629,6 +638,7 @@ public final class CascadeMorphologySampler {
                 crestStructure,
                 ridgeRelief,
                 peakRelief,
+                volcanoFoothillRelief,
                 volcanoRelief,
                 volcanoMorphology.upperCone(),
                 volcanoMorphology.radialStructure(),
@@ -1173,22 +1183,88 @@ public final class CascadeMorphologySampler {
                         localY
                 ) / directionalStretch;
 
-        if (baseRadius >= 1.0) {
+        /*
+         * T2 adds a separate highland / foothill transition outside the
+         * formal volcanic cone.  This is intentionally ordinary-Cascade
+         * scale uplift, not landmark-height uplift: the goal is to embed the
+         * volcano in a mountain complex rather than enlarge the cone itself.
+         */
+        if (baseRadius >= 1.62) {
             return VolcanoMorphology.empty();
+        }
+
+        double foothillWindow =
+                smoothstep(
+                        0.52,
+                        0.84,
+                        baseRadius
+                )
+                        * (
+                        1.0
+                                - smoothstep(
+                                1.08,
+                                1.62,
+                                baseRadius
+                        )
+                );
+
+        double foothillNoise =
+                clamp01(
+                        volcanoMorphologyNoise.fbm(
+                                localX * 2.10 + 71.0,
+                                localY * 2.10 - 53.0,
+                                3,
+                                2.0,
+                                0.52
+                        ) * 0.5 + 0.5
+                );
+
+        double foothillLobes =
+                clamp(
+                        0.62
+                                + Math.cos(
+                                angle * 3.0
+                                        + landmarkVolcano.asymmetryPhase() * 0.73
+                        ) * 0.24
+                                + Math.cos(
+                                angle * 5.0
+                                        - landmarkVolcano.buttressPhase() * 0.41
+                        ) * 0.18,
+                        0.18,
+                        1.10
+                );
+
+        double foothillRelief =
+                clamp01(
+                        foothillWindow
+                                * (0.48 + foothillNoise * 0.52)
+                                * foothillLobes
+                );
+
+        if (baseRadius >= 1.0) {
+            return new VolcanoMorphology(
+                    foothillRelief,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+            );
         }
 
         double remaining =
                 1.0 - baseRadius;
 
         /*
-         * Lower apron: broad and comparatively gentle. This remains the
-         * principal large-scale silhouette and ensures the volcano merges
-         * into the surrounding Cascade terrain instead of sitting on it.
+         * T2 makes the edifice more explicitly stratovolcanic.  The lower
+         * apron still occupies the same footprint, but its higher exponent
+         * makes the outer flanks gentler while concentrating more slope in
+         * the middle / upper mountain.
          */
         double lowerApron =
                 Math.pow(
                         remaining,
-                        1.12
+                        1.42
                 );
 
         double offsetAcross =
@@ -1208,17 +1284,17 @@ public final class CascadeMorphologySampler {
                         + offsetAlong * cosine;
 
         /*
-         * Upper cone: steeper, narrower, and slightly displaced from the
-         * center of the lower apron. The offset is intentionally subtle; its
-         * job is to create unequal flank lengths, not a visibly bent cone.
+         * A narrower, steeper upper cone now rises distinctly above the
+         * broad apron.  Summit height remains unchanged because the combined
+         * profile still reaches the same normalized ceiling.
          */
         double upperX =
                 (localX - offsetX)
-                        / 0.47;
+                        / 0.44;
 
         double upperY =
                 (localY - offsetY)
-                        / 0.43;
+                        / 0.40;
 
         double upperRadius =
                 Math.hypot(
@@ -1230,13 +1306,13 @@ public final class CascadeMorphologySampler {
                 upperRadius < 1.0
                         ? Math.pow(
                         1.0 - upperRadius,
-                        1.72
+                        1.95
                 )
                         : 0.0;
 
         double relief =
-                lowerApron * 0.66
-                        + upperCone * 0.37;
+                lowerApron * 0.60
+                        + upperCone * 0.43;
 
         /*
          * Alternating buttresses and shallow radial swales establish the
@@ -1428,6 +1504,7 @@ public final class CascadeMorphologySampler {
                 );
 
         return new VolcanoMorphology(
+                foothillRelief,
                 clamp01(relief),
                 clamp01(upperCone),
                 radialStructure,
@@ -2478,6 +2555,7 @@ public final class CascadeMorphologySampler {
 
 
     private record VolcanoMorphology(
+            double foothillRelief,
             double relief,
             double upperCone,
             double radialStructure,
@@ -2487,6 +2565,7 @@ public final class CascadeMorphologySampler {
 
         private static VolcanoMorphology empty() {
             return new VolcanoMorphology(
+                    0.0,
                     0.0,
                     0.0,
                     0.0,

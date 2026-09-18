@@ -102,7 +102,7 @@ public final class FiniteChunkGenerator
                 seed;
 
         WorldConfig config =
-                WorldConfig.quickTest();
+                WorldConfig.production();
 
         this.blueprint =
                 new CascadiaGenerator()

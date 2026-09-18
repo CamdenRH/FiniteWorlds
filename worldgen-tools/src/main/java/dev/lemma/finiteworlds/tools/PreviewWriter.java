@@ -1030,6 +1030,13 @@ public final class PreviewWriter {
                         BufferedImage.TYPE_INT_RGB
                 );
 
+        BufferedImage volcanoFoothillImage =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
         BufferedImage volcanoReliefImage =
                 new BufferedImage(
                         size,
@@ -1133,6 +1140,12 @@ public final class PreviewWriter {
                                         * 255.0
                         );
 
+                int volcanoFoothillGray =
+                        clamp255(
+                                sample.volcanoFoothillRelief()
+                                        * 255.0
+                        );
+
                 int volcanoReliefGray =
                         clamp255(
                                 sample.volcanoRelief()
@@ -1210,6 +1223,14 @@ public final class PreviewWriter {
                         (peakGray << 16)
                                 | (peakGray << 8)
                                 | peakGray
+                );
+
+                volcanoFoothillImage.setRGB(
+                        x,
+                        z,
+                        (volcanoFoothillGray << 16)
+                                | (volcanoFoothillGray << 8)
+                                | volcanoFoothillGray
                 );
 
                 volcanoReliefImage.setRGB(
@@ -1299,6 +1320,14 @@ public final class PreviewWriter {
                 "PNG",
                 directory.resolve(
                         "cascade-peak-relief.png"
+                ).toFile()
+        );
+
+        ImageIO.write(
+                volcanoFoothillImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-volcano-foothills.png"
                 ).toFile()
         );
 

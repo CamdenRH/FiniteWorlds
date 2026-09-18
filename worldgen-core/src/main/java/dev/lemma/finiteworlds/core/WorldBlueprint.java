@@ -394,14 +394,17 @@ public final class WorldBlueprint {
                 );
 
         /*
-         * Catmull-Rom can overshoot slightly.
-         * Clamp to a safe world range for now.
+         * Catmull-Rom can overshoot slightly near sharp elevation changes.
+         * Keep interpolation inside the final Finite Worlds vertical
+         * envelope instead of the obsolete prototype ceiling at Y=512.
+         * This changes no terrain scale; it only stops legitimate tall
+         * features from being flattened before Minecraft sees them.
          */
         result =
                 Math.max(
-                        -256.0,
+                        -512.0,
                         Math.min(
-                                512.0,
+                                1535.0,
                                 result
                         )
                 );
