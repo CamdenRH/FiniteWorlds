@@ -10,14 +10,20 @@ package dev.lemma.finiteworlds.core.geography;
  */
 public record CascadeMorphologySample(
         double envelope,
+        double regionalHeight,
+        double rangeRelief,
         double crestStructure,
         double ridgeRelief,
+        double peakRelief,
         double passSuppression,
         double uplift
 ) {
 
     public static CascadeMorphologySample empty() {
         return new CascadeMorphologySample(
+                0.0,
+                0.0,
+                0.0,
                 0.0,
                 0.0,
                 0.0,

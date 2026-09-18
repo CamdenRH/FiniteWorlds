@@ -908,6 +908,20 @@ public final class PreviewWriter {
                         BufferedImage.TYPE_INT_RGB
                 );
 
+        BufferedImage regionalHeightImage =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        BufferedImage rangeImage =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
         BufferedImage crestImage =
                 new BufferedImage(
                         size,
@@ -916,6 +930,13 @@ public final class PreviewWriter {
                 );
 
         BufferedImage ridgeImage =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        BufferedImage peakImage =
                 new BufferedImage(
                         size,
                         size,
@@ -959,6 +980,18 @@ public final class PreviewWriter {
                                         * 255.0
                         );
 
+                int regionalHeightGray =
+                        clamp255(
+                                sample.regionalHeight()
+                                        * 255.0
+                        );
+
+                int rangeGray =
+                        clamp255(
+                                sample.rangeRelief()
+                                        * 255.0
+                        );
+
                 int crestGray =
                         clamp255(
                                 sample.crestStructure()
@@ -971,12 +1004,34 @@ public final class PreviewWriter {
                                         * 255.0
                         );
 
+                int peakGray =
+                        clamp255(
+                                sample.peakRelief()
+                                        * 255.0
+                        );
+
                 envelopeImage.setRGB(
                         x,
                         z,
                         (envelopeGray << 16)
                                 | (envelopeGray << 8)
                                 | envelopeGray
+                );
+
+                regionalHeightImage.setRGB(
+                        x,
+                        z,
+                        (regionalHeightGray << 16)
+                                | (regionalHeightGray << 8)
+                                | regionalHeightGray
+                );
+
+                rangeImage.setRGB(
+                        x,
+                        z,
+                        (rangeGray << 16)
+                                | (rangeGray << 8)
+                                | rangeGray
                 );
 
                 crestImage.setRGB(
@@ -994,6 +1049,14 @@ public final class PreviewWriter {
                                 | (ridgeGray << 8)
                                 | ridgeGray
                 );
+
+                peakImage.setRGB(
+                        x,
+                        z,
+                        (peakGray << 16)
+                                | (peakGray << 8)
+                                | peakGray
+                );
             }
         }
 
@@ -1002,6 +1065,22 @@ public final class PreviewWriter {
                 "PNG",
                 directory.resolve(
                         "cascade-envelope.png"
+                ).toFile()
+        );
+
+        ImageIO.write(
+                regionalHeightImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-regional-height.png"
+                ).toFile()
+        );
+
+        ImageIO.write(
+                rangeImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-range-relief.png"
                 ).toFile()
         );
 
@@ -1018,6 +1097,14 @@ public final class PreviewWriter {
                 "PNG",
                 directory.resolve(
                         "cascade-ridge-relief.png"
+                ).toFile()
+        );
+
+        ImageIO.write(
+                peakImage,
+                "PNG",
+                directory.resolve(
+                        "cascade-peak-relief.png"
                 ).toFile()
         );
     }

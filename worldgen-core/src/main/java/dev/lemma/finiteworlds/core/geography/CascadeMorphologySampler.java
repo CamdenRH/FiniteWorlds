@@ -15,6 +15,8 @@ import java.util.SplittableRandom;
  *
  *  - a broad asymmetric mountain envelope,
  *  - 3-5 distinct high mountain massifs separated by lower passes,
+ *  - a continuous secondary-mountain relief field across the range body,
+ *  - an explicit hierarchy of non-volcanic alpine summits,
  *  - a smaller hierarchy of major ridge systems,
  *  - secondary ridge branches that emerge from those major systems,
  *  - longer / broader western ridges and shorter / steeper eastern ridges.
@@ -30,9 +32,13 @@ public final class CascadeMorphologySampler {
     private final ValueNoise clusterNoise;
     private final ValueNoise crestNoise;
     private final ValueNoise ridgeTextureNoise;
+    private final ValueNoise rangeReliefNoise;
+    private final ValueNoise rangeWarpNoise;
+    private final ValueNoise regionalHeightNoise;
     private final ValueNoise passNoise;
 
-    private final List<Massif> massifs;
+    private final List<CascadeMassif> massifs;
+    private final List<CascadePeak> peaks;
     private final List<RidgePath> ridgeSpurs;
 
     public CascadeMorphologySampler(
@@ -74,6 +80,30 @@ public final class CascadeMorphologySampler {
                         )
                 );
 
+        this.rangeReliefNoise =
+                new ValueNoise(
+                        SeedUtil.derive(
+                                morphologySeed,
+                                "range-relief"
+                        )
+                );
+
+        this.rangeWarpNoise =
+                new ValueNoise(
+                        SeedUtil.derive(
+                                morphologySeed,
+                                "range-warp"
+                        )
+                );
+
+        this.regionalHeightNoise =
+                new ValueNoise(
+                        SeedUtil.derive(
+                                morphologySeed,
+                                "regional-height"
+                        )
+                );
+
         this.passNoise =
                 new ValueNoise(
                         SeedUtil.derive(
@@ -88,6 +118,13 @@ public final class CascadeMorphologySampler {
                                 morphologySeed,
                                 "massifs"
                         )
+                );
+
+        this.peaks =
+                CascadePeakPlanner.generate(
+                        worldSeed,
+                        spineLength,
+                        massifs
                 );
 
         this.ridgeSpurs =
@@ -360,6 +397,74 @@ public final class CascadeMorphologySampler {
 
         /*
          * =========================================================
+         * REGIONAL ELEVATION ZONES
+         * =========================================================
+         *
+         * The Cascade envelope should not behave like one uniformly raised
+         * slab.  This very-low-frequency field establishes long high and low
+         * sections of the range before individual secondary mountains and
+         * summits are added.  It is intentionally independent of massif
+         * strength: massifs are exceptional high-mountain concentrations,
+         * while regional height controls the baseline the whole range sits on.
+         */
+        double regionalHeight =
+                regionalHeightField(
+                        arcPosition,
+                        signedCascadeDistance,
+                        localPass
+                );
+
+        /*
+         * =========================================================
+         * CONTINUOUS SECONDARY MOUNTAIN RELIEF
+         * =========================================================
+         *
+         * The explicit massifs identify exceptional high-mountain groups;
+         * they should not be the only mountainous terrain in the Cascade
+         * envelope.  This lower-amplitude field fills the broader range body
+         * with broken secondary ridges and mountain masses.  It is largely
+         * independent of massif strength, so the terrain remains mountainous
+         * between high-mountain concentrations, while local pass notches can
+         * still lower short sections of the chain.
+         */
+        double rangeRelief =
+                rangeReliefField(
+                        nx,
+                        nz,
+                        signedCascadeDistance,
+                        arcPosition,
+                        envelope,
+                        crestStructure,
+                        localPass,
+                        regionalHeight
+                );
+
+        /*
+         * =========================================================
+         * EXPLICIT SUMMIT FIELD
+         * =========================================================
+         *
+         * The massif determines where a high-mountain group exists. Peaks
+         * determine where the individual summits inside that group exist.
+         * This field is intentionally independent of the ridge network so
+         * later passes can attach ridges, glaciers, and drainage to known
+         * summit locations instead of hoping noise creates suitable maxima.
+         */
+        double peakRelief =
+                peakField(
+                        signedCascadeDistance,
+                        arcPosition,
+                        localPass
+                );
+
+        peakRelief =
+                clamp01(
+                        peakRelief
+                                * envelope
+                );
+
+        /*
+         * =========================================================
          * FINAL UPLIFT
          * =========================================================
          *
@@ -370,33 +475,86 @@ public final class CascadeMorphologySampler {
         double maximumUplift =
                 cascadeSystem.maximumUplift();
 
+        /*
+         * Regional baseline elevation now swings aggressively instead of
+         * assigning the whole range one fixed pedestal.  Low zones remain
+         * mountainous but can sit dozens of terrain units beneath neighboring
+         * high zones before any massif / summit relief is considered.
+         */
+        double regionalBaseFraction =
+                lerp(
+                        0.085,
+                        0.285,
+                        Math.pow(
+                                regionalHeight,
+                                1.08
+                        )
+                );
+
         double broadUplift =
                 maximumUplift
-                        * 0.23
-                        * envelope;
+                        * regionalBaseFraction
+                        * envelope
+                        * (
+                        1.0
+                                - localPass * 0.28
+                );
+
+        /*
+         * Treat the secondary range field as signed relief around the
+         * regional baseline.  Dark portions therefore carve intermountain
+         * lows while bright portions create substantial secondary mountain
+         * blocks.  This is still macro physiography, not erosion.
+         */
+        double rangeDeviation =
+                (
+                        rangeRelief
+                                - 0.43
+                )
+                        * maximumUplift
+                        * 0.30
+                        * envelope
+                        * (
+                        0.80
+                                + regionalHeight * 0.38
+                );
 
         double crestUplift =
                 maximumUplift
-                        * 0.63
+                        * 0.36
                         * crestStructure;
 
         double ridgeUplift =
                 maximumUplift
-                        * 0.14
+                        * 0.09
                         * ridgeRelief;
 
+        double peakUplift =
+                maximumUplift
+                        * 0.20
+                        * peakRelief;
+
         double uplift =
-                Math.min(
-                        maximumUplift,
+                clamp(
                         broadUplift
+                                + rangeDeviation
                                 + crestUplift
                                 + ridgeUplift
+                                + peakUplift,
+                        0.0,
+                        maximumUplift
                 );
 
         return new CascadeMorphologySample(
                 envelope,
+                clamp01(
+                        regionalHeight
+                                * envelope
+                ),
+                rangeRelief,
                 crestStructure,
                 ridgeRelief,
+                peakRelief,
                 passSuppression,
                 uplift
         );
@@ -414,7 +572,7 @@ public final class CascadeMorphologySampler {
         double result =
                 0.0;
 
-        for (Massif massif : massifs) {
+        for (CascadeMassif massif : massifs) {
             double normalizedDistance =
                     Math.abs(
                             arcPosition
@@ -457,7 +615,7 @@ public final class CascadeMorphologySampler {
         );
     }
 
-    private List<Massif> createMassifs(
+    private List<CascadeMassif> createMassifs(
             long seed
     ) {
         SplittableRandom random =
@@ -473,7 +631,7 @@ public final class CascadeMorphologySampler {
                         massifCount
                 );
 
-        List<Massif> result =
+        List<CascadeMassif> result =
                 new ArrayList<>();
 
         for (int i = 0; i < massifCount; i++) {
@@ -531,7 +689,7 @@ public final class CascadeMorphologySampler {
             }
 
             result.add(
-                    new Massif(
+                    new CascadeMassif(
                             centerProgress
                                     * spineLength,
                             halfWidthProgress
@@ -543,6 +701,321 @@ public final class CascadeMorphologySampler {
 
         return List.copyOf(
                 result
+        );
+    }
+
+    /*
+     * =============================================================
+     * CONTINUOUS RANGE-BODY RELIEF
+     * =============================================================
+     */
+
+    private double regionalHeightField(
+            double arcPosition,
+            double signedDistance,
+            double localPassSuppression
+    ) {
+        /*
+         * The first signal changes only a few times along the entire range.
+         * The second introduces broad shoulders / sub-regions so elevation
+         * zones do not become simple horizontal bands.
+         */
+        double longSignal =
+                regionalHeightNoise.fbm(
+                        arcPosition * 2.35 + 71.0,
+                        5.0,
+                        3,
+                        2.0,
+                        0.50
+                );
+
+        double shoulderSignal =
+                regionalHeightNoise.fbm(
+                        arcPosition * 5.4 - 23.0,
+                        signedDistance * 5.5 + 17.0,
+                        3,
+                        2.0,
+                        0.52
+                );
+
+        double combined =
+                longSignal * 0.68
+                        + shoulderSignal * 0.32;
+
+        double normalized =
+                clamp01(
+                        combined * 0.5 + 0.5
+                );
+
+        /*
+         * Stretch the middle of the distribution so adjacent regional zones
+         * separate visibly instead of clustering around one average height.
+         */
+        double zoned =
+                smoothstep(
+                        0.18,
+                        0.82,
+                        normalized
+                );
+
+        zoned =
+                Math.pow(
+                        zoned,
+                        0.88
+                );
+
+        /*
+         * Local passes lower the baseline but never erase the surrounding
+         * mountain system.  The broad between-massif saddle term is not used
+         * here; otherwise we'd recreate the isolated-island problem.
+         */
+        return clamp01(
+                0.10
+                        + zoned * 0.90
+                        - localPassSuppression * 0.22
+        );
+    }
+
+    private double rangeReliefField(
+            double nx,
+            double nz,
+            double signedDistance,
+            double arcPosition,
+            double envelope,
+            double crestStructure,
+            double localPassSuppression,
+            double regionalHeight
+    ) {
+        if (envelope <= 0.0) {
+            return 0.0;
+        }
+
+        double warp =
+                rangeWarpNoise.fbm(
+                        arcPosition * 5.2 + 31.0,
+                        signedDistance * 17.0 - 9.0,
+                        3,
+                        2.0,
+                        0.5
+                ) * 0.020;
+
+        /*
+         * Anisotropic sampling makes the field read as mountain groups and
+         * short broken ridges rather than isotropic blobs.  The cross-range
+         * frequency is intentionally higher than the along-range frequency.
+         */
+        double broadSignal =
+                rangeReliefNoise.fbm(
+                        (arcPosition + warp) * 12.0 + 7.0,
+                        signedDistance * 31.0 + 19.0,
+                        4,
+                        2.0,
+                        0.52
+                );
+
+        double detailSignal =
+                rangeReliefNoise.fbm(
+                        nx * 18.0 - 41.0,
+                        nz * 18.0 + 23.0,
+                        3,
+                        2.0,
+                        0.48
+                );
+
+        double normalizedBroad =
+                clamp01(
+                        broadSignal * 0.5 + 0.5
+                );
+
+        double ridged =
+                1.0
+                        - Math.abs(
+                        broadSignal
+                );
+
+        ridged =
+                Math.pow(
+                        clamp01(ridged),
+                        1.42
+                );
+
+        double normalizedDetail =
+                clamp01(
+                        detailSignal * 0.5 + 0.5
+                );
+
+        /*
+         * Pass 4 kept too much of this field near the middle of 0..1.
+         * Deliberately stretch it so the same range body contains secondary
+         * mountain blocks, ordinary uplands, and broad intermountain lows.
+         */
+        double rawMountainField =
+                normalizedBroad * 0.43
+                        + ridged * 0.39
+                        + normalizedDetail * 0.18;
+
+        double brokenMountainField =
+                smoothstep(
+                        0.22,
+                        0.78,
+                        rawMountainField
+                );
+
+        brokenMountainField =
+                Math.pow(
+                        clamp01(brokenMountainField),
+                        1.08
+                );
+
+        /*
+         * Favor the upper flanks, but let the field operate almost everywhere
+         * inside the range.  Higher regional zones are more rugged while low
+         * zones retain deep contrast rather than simply becoming flat.
+         */
+        double absoluteDistance =
+                Math.abs(signedDistance);
+
+        double flankBias =
+                0.84
+                        + 0.22
+                        * smoothstep(
+                        0.012,
+                        0.110,
+                        absoluteDistance
+                );
+
+        double regionalRuggedness =
+                0.78
+                        + regionalHeight * 0.34;
+
+        double crestReservation =
+                1.0
+                        - crestStructure * 0.18;
+
+        double passMultiplier =
+                1.0
+                        - localPassSuppression * 0.52;
+
+        return clamp01(
+                brokenMountainField
+                        * envelope
+                        * flankBias
+                        * regionalRuggedness
+                        * crestReservation
+                        * passMultiplier
+        );
+    }
+
+    /*
+     * =============================================================
+     * PEAK FIELD
+     * =============================================================
+     */
+
+    private double peakField(
+            double signedDistance,
+            double arcPosition,
+            double localPassSuppression
+    ) {
+        double maximumContribution =
+                0.0;
+
+        double pedestalContribution =
+                0.0;
+
+        for (CascadePeak peak : peaks) {
+            double arcDistance =
+                    arcPosition
+                            - peak.arcPosition();
+
+            if (
+                    Math.abs(arcDistance)
+                            > peak.radiusAlong()
+            ) {
+                continue;
+            }
+
+            double crossDistance =
+                    signedDistance
+                            - peak.signedDistance();
+
+            if (
+                    Math.abs(crossDistance)
+                            > peak.radiusAcross()
+            ) {
+                continue;
+            }
+
+            double normalizedAcross =
+                    crossDistance
+                            / peak.radiusAcross();
+
+            double normalizedAlong =
+                    arcDistance
+                            / peak.radiusAlong();
+
+            double normalizedDistance =
+                    Math.sqrt(
+                            normalizedAcross * normalizedAcross
+                                    + normalizedAlong * normalizedAlong
+                    );
+
+            if (normalizedDistance >= 1.0) {
+                continue;
+            }
+
+            double cone =
+                    1.0
+                            - smoothstep(
+                            0.0,
+                            1.0,
+                            normalizedDistance
+                    );
+
+            double classMultiplier =
+                    peak.peakClass() == CascadePeakClass.BACKGROUND_ALPINE
+                            ? 1.0
+                            - localPassSuppression * 0.82
+                            : 1.0;
+
+            double summit =
+                    Math.pow(
+                            cone,
+                            peak.sharpness()
+                    )
+                            * peak.strength()
+                            * classMultiplier;
+
+            maximumContribution =
+                    Math.max(
+                            maximumContribution,
+                            summit
+                    );
+
+            double pedestalWeight =
+                    switch (peak.peakClass()) {
+                        case BACKGROUND_ALPINE -> 0.065;
+                        case ALPINE -> 0.11;
+                        case MAJOR_ALPINE -> 0.17;
+                        case REGIONAL_SUMMIT -> 0.24;
+                    };
+
+            double pedestal =
+                    Math.pow(
+                            cone,
+                            0.62
+                    )
+                            * peak.strength()
+                            * pedestalWeight
+                            * classMultiplier;
+
+            pedestalContribution +=
+                    pedestal;
+        }
+
+        return clamp01(
+                maximumContribution
+                        + pedestalContribution
         );
     }
 
@@ -816,7 +1289,7 @@ public final class CascadeMorphologySampler {
             int majorCount =
                     7 + random.nextInt(5);
 
-            List<Massif> assignments =
+            List<CascadeMassif> assignments =
                     new ArrayList<>();
 
             for (
@@ -838,7 +1311,7 @@ public final class CascadeMorphologySampler {
                 );
             }
 
-            for (Massif massif : assignments) {
+            for (CascadeMassif massif : assignments) {
                 RidgePath major =
                         createMajorRidge(
                                 random,
@@ -864,13 +1337,13 @@ public final class CascadeMorphologySampler {
         );
     }
 
-    private Massif chooseWeightedMassif(
+    private CascadeMassif chooseWeightedMassif(
             SplittableRandom random
     ) {
         double totalWeight =
                 0.0;
 
-        for (Massif massif : massifs) {
+        for (CascadeMassif massif : massifs) {
             totalWeight +=
                     massif.strength()
                             * massif.halfWidth();
@@ -883,7 +1356,7 @@ public final class CascadeMorphologySampler {
         double running =
                 0.0;
 
-        for (Massif massif : massifs) {
+        for (CascadeMassif massif : massifs) {
             running +=
                     massif.strength()
                             * massif.halfWidth();
@@ -899,7 +1372,7 @@ public final class CascadeMorphologySampler {
     private RidgePath createMajorRidge(
             SplittableRandom random,
             double side,
-            Massif massif
+            CascadeMassif massif
     ) {
         double centerOffset =
                 triangular(
@@ -1080,7 +1553,7 @@ public final class CascadeMorphologySampler {
             List<RidgePath> result,
             SplittableRandom random,
             RidgePath parent,
-            Massif massif
+            CascadeMassif massif
     ) {
         double massifStrength =
                 massif.strength();
@@ -1580,13 +2053,6 @@ public final class CascadeMorphologySampler {
                         value
                 )
         );
-    }
-
-    private record Massif(
-            double centerArc,
-            double halfWidth,
-            double strength
-    ) {
     }
 
     private record RidgeNode(
