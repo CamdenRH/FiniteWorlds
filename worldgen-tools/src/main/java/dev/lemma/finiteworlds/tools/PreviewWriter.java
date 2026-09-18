@@ -8,9 +8,15 @@ import dev.lemma.finiteworlds.core.geography.ContinentPlan;
 import dev.lemma.finiteworlds.core.geography.GeoPoint;
 import dev.lemma.finiteworlds.core.geography.MountainSpine;
 import dev.lemma.finiteworlds.core.geography.TerrainProvince;
+import dev.lemma.finiteworlds.core.hydrology.Depression;
+import dev.lemma.finiteworlds.core.hydrology.DepressionClass;
+import dev.lemma.finiteworlds.core.hydrology.DepressionClassification;
+import dev.lemma.finiteworlds.core.hydrology.FlowDirection;
+import dev.lemma.finiteworlds.core.hydrology.HydrologyGrid;
 import dev.lemma.finiteworlds.core.terrain.TerrainSampler;
 
 import javax.imageio.ImageIO;
+import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -184,6 +190,55 @@ public final class PreviewWriter {
                 world,
                 directory.resolve(
                         "slope.png"
+                )
+        );
+
+        writeHydrologyFlowDirection(
+                world,
+                directory.resolve(
+                        "hydrology-flow-direction.png"
+                )
+        );
+
+        writeHydrologySinks(
+                world,
+                directory.resolve(
+                        "hydrology-sinks.png"
+                )
+        );
+
+        writeHydrologyDepressions(
+                world,
+                directory.resolve(
+                        "hydrology-depressions.png"
+                )
+        );
+
+        writeHydrologyDepressionDepth(
+                world,
+                directory.resolve(
+                        "hydrology-depression-depth.png"
+                )
+        );
+
+        writeHydrologySpillPoints(
+                world,
+                directory.resolve(
+                        "hydrology-spill-points.png"
+                )
+        );
+
+        writeHydrologyDepressionClasses(
+                world,
+                directory.resolve(
+                        "hydrology-depression-classes.png"
+                )
+        );
+
+        writeHydrologyDepressionChains(
+                world,
+                directory.resolve(
+                        "hydrology-depression-chains.png"
                 )
         );
     }
@@ -1804,6 +1859,593 @@ public final class PreviewWriter {
                 "PNG",
                 path.toFile()
         );
+    }
+
+
+    private static void writeHydrologyFlowDirection(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                FlowDirection direction =
+                        hydrology.flowDirection(
+                                x,
+                                z
+                        );
+
+                int color =
+                        switch (direction) {
+                            case OCEAN -> rgb(0, 0, 0);
+                            case SINK -> rgb(255, 255, 255);
+                            case OUTLET -> rgb(150, 150, 150);
+
+                            case NORTH -> rgb(230, 45, 45);
+                            case NORTH_EAST -> rgb(235, 135, 40);
+                            case EAST -> rgb(220, 210, 45);
+                            case SOUTH_EAST -> rgb(70, 190, 75);
+                            case SOUTH -> rgb(45, 195, 195);
+                            case SOUTH_WEST -> rgb(55, 105, 225);
+                            case WEST -> rgb(135, 70, 215);
+                            case NORTH_WEST -> rgb(220, 60, 175);
+                        };
+
+                image.setRGB(
+                        x,
+                        z,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologySinks(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                FlowDirection direction =
+                        hydrology.flowDirection(
+                                x,
+                                z
+                        );
+
+                int color =
+                        switch (direction) {
+                            case SINK -> rgb(255, 45, 45);
+                            case OUTLET -> rgb(35, 220, 235);
+                            default -> rgb(0, 0, 0);
+                        };
+
+                image.setRGB(
+                        x,
+                        z,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyDepressions(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                int id =
+                        hydrology.depressionId(
+                                x,
+                                z
+                        );
+
+                if (id < 0) {
+                    image.setRGB(
+                            x,
+                            z,
+                            rgb(0, 0, 0)
+                    );
+                    continue;
+                }
+
+                float hue =
+                        (float) ((id * 0.6180339887498949) % 1.0);
+
+                int color =
+                        Color.HSBtoRGB(
+                                hue,
+                                0.72f,
+                                0.95f
+                        ) & 0x00FFFFFF;
+
+                image.setRGB(
+                        x,
+                        z,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyDepressionDepth(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        double maximumDepth =
+                Math.max(
+                        hydrology.maximumDepressionDepth(),
+                        1.0e-9
+                );
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                double depth =
+                        hydrology.depressionDepth(
+                                x,
+                                z
+                        );
+
+                if (depth <= 0.0) {
+                    image.setRGB(
+                            x,
+                            z,
+                            rgb(0, 0, 0)
+                    );
+                    continue;
+                }
+
+                double normalized =
+                        Math.sqrt(
+                                Math.min(
+                                        1.0,
+                                        depth / maximumDepth
+                                )
+                        );
+
+                int intensity =
+                        clamp255(
+                                (int) Math.round(
+                                        normalized * 255.0
+                                )
+                        );
+
+                int color =
+                        rgb(
+                                intensity / 5,
+                                (int) Math.round(intensity * 0.68),
+                                intensity
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologySpillPoints(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                image.setRGB(
+                        x,
+                        z,
+                        hydrology.depressionId(x, z) >= 0
+                                ? rgb(45, 45, 45)
+                                : rgb(0, 0, 0)
+                );
+            }
+        }
+
+        for (Depression depression : hydrology.depressions()) {
+            drawMarker(
+                    image,
+                    depression.sinkX(),
+                    depression.sinkZ(),
+                    rgb(255, 55, 55)
+            );
+
+            if (!depression.hasMeasuredSpill()) {
+                continue;
+            }
+
+            drawMarker(
+                    image,
+                    depression.spillX(),
+                    depression.spillZ(),
+                    rgb(255, 220, 55)
+            );
+
+            drawMarker(
+                    image,
+                    depression.spillTargetX(),
+                    depression.spillTargetZ(),
+                    rgb(40, 220, 240)
+            );
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyDepressionClasses(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                int id =
+                        hydrology.depressionId(
+                                x,
+                                z
+                        );
+
+                DepressionClassification classification =
+                        hydrology.depressionClassification(id);
+
+                if (classification == null) {
+                    image.setRGB(
+                            x,
+                            z,
+                            rgb(0, 0, 0)
+                    );
+                    continue;
+                }
+
+                int color =
+                        switch (classification.depressionClass()) {
+                            case MICRO_PIT -> rgb(245, 65, 65);
+                            case SHALLOW_BASIN -> rgb(245, 205, 55);
+                            case ALPINE_BASIN -> rgb(55, 220, 235);
+                            case MAJOR_INTERIOR_BASIN -> rgb(65, 105, 245);
+                            case COMPOUND_BASIN -> rgb(230, 65, 220);
+                        };
+
+                image.setRGB(
+                        x,
+                        z,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyDepressionChains(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                image.setRGB(
+                        x,
+                        z,
+                        hydrology.depressionId(x, z) >= 0
+                                ? rgb(28, 28, 28)
+                                : rgb(0, 0, 0)
+                );
+            }
+        }
+
+        List<Depression> depressions =
+                hydrology.depressions();
+
+        for (Depression depression : depressions) {
+            DepressionClassification classification =
+                    hydrology.depressionClassification(
+                            depression.id()
+                    );
+
+            if (classification == null) {
+                continue;
+            }
+
+            int targetId =
+                    classification.downstreamDepressionId();
+
+            if (
+                    targetId >= 0
+                            && targetId < depressions.size()
+            ) {
+                Depression target =
+                        depressions.get(targetId);
+
+                drawLine(
+                        image,
+                        depression.sinkX(),
+                        depression.sinkZ(),
+                        target.sinkX(),
+                        target.sinkZ(),
+                        classification.belongsToCompoundGroup()
+                                ? rgb(155, 40, 150)
+                                : rgb(75, 90, 120)
+                );
+            }
+        }
+
+        for (Depression depression : depressions) {
+            DepressionClassification classification =
+                    hydrology.depressionClassification(
+                            depression.id()
+                    );
+
+            if (classification == null) {
+                continue;
+            }
+
+            int markerColor;
+
+            if (classification.belongsToCompoundGroup()) {
+                markerColor =
+                        rgb(245, 70, 230);
+            } else if (classification.drainsDirectlyOutsideDepressionSystem()) {
+                markerColor =
+                        rgb(45, 225, 235);
+            } else {
+                int intensity =
+                        Math.min(
+                                255,
+                                105 + classification.chainDepth() * 28
+                        );
+
+                markerColor =
+                        rgb(
+                                intensity,
+                                Math.max(75, 235 - classification.chainDepth() * 24),
+                                55
+                        );
+            }
+
+            drawMarker(
+                    image,
+                    depression.sinkX(),
+                    depression.sinkZ(),
+                    markerColor
+            );
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void drawLine(
+            BufferedImage image,
+            int x0,
+            int z0,
+            int x1,
+            int z1,
+            int color
+    ) {
+        int dx =
+                Math.abs(x1 - x0);
+
+        int dz =
+                Math.abs(z1 - z0);
+
+        int stepX =
+                x0 < x1
+                        ? 1
+                        : -1;
+
+        int stepZ =
+                z0 < z1
+                        ? 1
+                        : -1;
+
+        int error =
+                dx - dz;
+
+        int x =
+                x0;
+
+        int z =
+                z0;
+
+        while (true) {
+            if (
+                    x >= 0
+                            && x < image.getWidth()
+                            && z >= 0
+                            && z < image.getHeight()
+            ) {
+                image.setRGB(
+                        x,
+                        z,
+                        color
+                );
+            }
+
+            if (x == x1 && z == z1) {
+                break;
+            }
+
+            int doubledError =
+                    error * 2;
+
+            if (doubledError > -dz) {
+                error -= dz;
+                x += stepX;
+            }
+
+            if (doubledError < dx) {
+                error += dx;
+                z += stepZ;
+            }
+        }
+    }
+
+
+    private static void drawMarker(
+            BufferedImage image,
+            int centerX,
+            int centerZ,
+            int color
+    ) {
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int x = centerX + dx;
+                int z = centerZ + dz;
+
+                if (
+                        x < 0
+                                || x >= image.getWidth()
+                                || z < 0
+                                || z >= image.getHeight()
+                ) {
+                    continue;
+                }
+
+                image.setRGB(
+                        x,
+                        z,
+                        color
+                );
+            }
+        }
     }
 
 

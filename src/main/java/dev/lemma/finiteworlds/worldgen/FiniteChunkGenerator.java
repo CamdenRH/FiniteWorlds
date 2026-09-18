@@ -39,8 +39,24 @@ public final class FiniteChunkGenerator
 
     public static final int SEA_LEVEL = 64;
 
-    public static final int MIN_Y = -64;
-    public static final int WORLD_HEIGHT = 384;
+    /*
+     * Final planned Finite Worlds vertical envelope.
+     *
+     * Keep the current prototype terrain itself on the familiar -64+ scale
+     * while development continues, but allocate the eventual dimension height
+     * now so exceptional terrain such as the landmark volcano is no longer
+     * clipped at vanilla Overworld Y=319.
+     */
+    public static final int MIN_Y = -512;
+    public static final int WORLD_HEIGHT = 2048;
+    public static final int MAX_Y = MIN_Y + WORLD_HEIGHT - 1;
+
+    /*
+     * Temporary development terrain floor. Blocks below this level remain air
+     * for now, avoiding the cost of filling an extra 448 vertical blocks per
+     * column before the deep-world geology/cave pass exists.
+     */
+    public static final int DEVELOPMENT_TERRAIN_MIN_Y = -64;
 
     private final TerrainSampler terrainSampler;
 
@@ -140,7 +156,7 @@ public final class FiniteChunkGenerator
                         );
 
                 for (
-                        int y = MIN_Y;
+                        int y = DEVELOPMENT_TERRAIN_MIN_Y;
                         y <= height;
                         y++
                 ) {
@@ -236,7 +252,7 @@ public final class FiniteChunkGenerator
                 surfaceHeight(x, z);
 
         for (
-                int y = MIN_Y;
+                int y = DEVELOPMENT_TERRAIN_MIN_Y;
                 y <= surface;
                 y++
         ) {
@@ -283,15 +299,10 @@ public final class FiniteChunkGenerator
                         elevation
                 );
 
-        int maximumY =
-                MIN_Y
-                        + WORLD_HEIGHT
-                        - 1;
-
         return Math.max(
-                MIN_Y,
+                DEVELOPMENT_TERRAIN_MIN_Y,
                 Math.min(
-                        maximumY,
+                        MAX_Y,
                         height
                 )
         );

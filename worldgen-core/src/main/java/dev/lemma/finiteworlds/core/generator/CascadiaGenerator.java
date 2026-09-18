@@ -14,6 +14,9 @@ import dev.lemma.finiteworlds.core.geography.PhysiographySample;
 import dev.lemma.finiteworlds.core.geography.PhysiographySampler;
 
 import dev.lemma.finiteworlds.core.noise.ValueNoise;
+import dev.lemma.finiteworlds.core.hydrology.DepressionAnalyzer;
+import dev.lemma.finiteworlds.core.hydrology.DepressionClassifier;
+import dev.lemma.finiteworlds.core.hydrology.HydrologyPlanner;
 
 
 public final class CascadiaGenerator {
@@ -257,6 +260,40 @@ public final class CascadiaGenerator {
                 );
             }
         }
+
+
+        /*
+         * =====================================================
+         * PHASE 5:
+         * RAW GLOBAL HYDROLOGY
+         * =====================================================
+         *
+         * Pass 1A only records the hydrologic working surface and raw D8
+         * downslope direction. Sinks are intentionally preserved for the
+         * next depression-resolution pass. No elevation is modified here.
+         */
+        HydrologyPlanner.populateRawFlow(
+                blueprint
+        );
+
+        /*
+         * Pass 1C measures the unresolved interior depressions without
+         * altering elevation or flow direction.  Resolution decisions are
+         * intentionally deferred until the resulting basin hierarchy has
+         * been inspected.
+         */
+        DepressionAnalyzer.analyze(
+                blueprint
+        );
+
+        /*
+         * Pass 1D classifies the measured raw basins and analyzes their
+         * spill-to-spill connectivity. This remains diagnostic only: the
+         * terrain and D8 directions are still untouched.
+         */
+        DepressionClassifier.classify(
+                blueprint
+        );
 
 
         return blueprint;

@@ -1,6 +1,7 @@
 package dev.lemma.finiteworlds.core;
 
 import dev.lemma.finiteworlds.core.geography.TerrainProvince;
+import dev.lemma.finiteworlds.core.hydrology.HydrologyGrid;
 
 public final class WorldBlueprint {
 
@@ -16,6 +17,8 @@ public final class WorldBlueprint {
     private final float[] coastRangeUplift;
     private final float[] cascadeUplift;
     private final float[] plateauUplift;
+
+    private final HydrologyGrid hydrology;
 
     public WorldBlueprint(WorldConfig config) {
         this.config = config;
@@ -40,6 +43,12 @@ public final class WorldBlueprint {
 
         this.plateauUplift =
                 new float[count];
+
+        this.hydrology =
+                new HydrologyGrid(
+                        config.blueprintResolution(),
+                        config.blocksPerCell()
+                );
     }
 
     public WorldConfig config() {
@@ -48,6 +57,10 @@ public final class WorldBlueprint {
 
     public int resolution() {
         return config.blueprintResolution();
+    }
+
+    public HydrologyGrid hydrology() {
+        return hydrology;
     }
 
     private int index(int x, int z) {

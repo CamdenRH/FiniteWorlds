@@ -1,7 +1,7 @@
 {
   "dimensions": {
     "minecraft:overworld": {
-      "type": "minecraft:overworld",
+      "type": "finite-worlds:cascadia",
       "generator": {
         "type": "finite-worlds:finite",
         "seed": 12345,

@@ -1,0 +1,1081 @@
+--- a/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/hydrology/HydrologyGrid.java
++++ b/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/hydrology/HydrologyGrid.java
+@@ -6,8 +6,8 @@
+ /**
+  * Global hydrology working grid aligned 1:1 with the WorldBlueprint grid.
+  *
+- * Pass 1C stores the immutable input surface, raw D8 flow direction, and a
+- * diagnostic description of unresolved depression footprints. Later passes
++ * Pass 1D stores the immutable input surface, raw D8 flow direction, measured
++ * depression footprints, and provisional basin classification. Later passes
+  * can add conditioned elevation, accumulation, watershed IDs, river order,
+  * lake state, and erosion products without changing the terrain API.
+  */
+@@ -22,6 +22,8 @@
+     private final int[] depressionId;
+     private final float[] depressionDepth;
+     private List<Depression> depressions;
++    private List<DepressionClassification> depressionClassifications;
++    private int compoundGroupCount;
+ 
+     public HydrologyGrid(
+             int resolution,
+@@ -52,6 +54,12 @@
+ 
+         this.depressions =
+                 List.of();
++
++        this.depressionClassifications =
++                List.of();
++
++        this.compoundGroupCount =
++                0;
+     }
+ 
+     public int resolution() {
+@@ -120,6 +128,41 @@
+         return depressions.size();
+     }
+ 
++    public List<DepressionClassification> depressionClassifications() {
++        return depressionClassifications;
++    }
++
++    public DepressionClassification depressionClassification(
++            int depressionId
++    ) {
++        if (
++                depressionId < 0
++                        || depressionId >= depressionClassifications.size()
++        ) {
++            return null;
++        }
++
++        return depressionClassifications.get(depressionId);
++    }
++
++    public int compoundGroupCount() {
++        return compoundGroupCount;
++    }
++
++    public int countDepressionsByClass(
++            DepressionClass depressionClass
++    ) {
++        int result = 0;
++
++        for (DepressionClassification classification : depressionClassifications) {
++            if (classification.depressionClass() == depressionClass) {
++                result++;
++            }
++        }
++
++        return result;
++    }
++
+     public int depressionCellCount() {
+         int result = 0;
+ 
+@@ -179,6 +222,23 @@
+     ) {
+         this.depressions =
+                 List.copyOf(depressions);
++
++        this.depressionClassifications =
++                List.of();
++
++        this.compoundGroupCount =
++                0;
++    }
++
++    void setDepressionClassifications(
++            List<DepressionClassification> classifications,
++            int compoundGroupCount
++    ) {
++        this.depressionClassifications =
++                List.copyOf(classifications);
++
++        this.compoundGroupCount =
++                compoundGroupCount;
+     }
+ 
+     public int sinkCount() {
+--- a/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/generator/CascadiaGenerator.java
++++ b/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/generator/CascadiaGenerator.java
+@@ -15,6 +15,7 @@
+ 
+ import dev.lemma.finiteworlds.core.noise.ValueNoise;
+ import dev.lemma.finiteworlds.core.hydrology.DepressionAnalyzer;
++import dev.lemma.finiteworlds.core.hydrology.DepressionClassifier;
+ import dev.lemma.finiteworlds.core.hydrology.HydrologyPlanner;
+ 
+ 
+@@ -285,6 +286,15 @@
+                 blueprint
+         );
+ 
++        /*
++         * Pass 1D classifies the measured raw basins and analyzes their
++         * spill-to-spill connectivity. This remains diagnostic only: the
++         * terrain and D8 directions are still untouched.
++         */
++        DepressionClassifier.classify(
++                blueprint
++        );
++
+ 
+         return blueprint;
+     }
+--- a/worldgen-tools/src/main/java/dev/lemma/finiteworlds/tools/PreviewMain.java
++++ b/worldgen-tools/src/main/java/dev/lemma/finiteworlds/tools/PreviewMain.java
+@@ -4,6 +4,7 @@
+ import dev.lemma.finiteworlds.core.WorldConfig;
+ import dev.lemma.finiteworlds.core.generator.CascadiaGenerator;
+ import dev.lemma.finiteworlds.core.geography.ContinentPlan;
++import dev.lemma.finiteworlds.core.hydrology.DepressionClass;
+ 
+ import java.nio.file.Path;
+ 
+@@ -77,6 +78,23 @@
+                 blueprint.hydrology().maximumDepressionDepth()
+         );
+ 
++        System.out.println(
++                "Compound depression groups: "
++                        + blueprint.hydrology().compoundGroupCount()
++        );
++
++        for (DepressionClass depressionClass : DepressionClass.values()) {
++            System.out.println(
++                    "  "
++                            + depressionClass
++                            + ": "
++                            + blueprint.hydrology()
++                            .countDepressionsByClass(
++                                    depressionClass
++                            )
++            );
++        }
++
+         Path output =
+                 Path.of(
+                         "preview",
+--- a/worldgen-tools/src/main/java/dev/lemma/finiteworlds/tools/PreviewWriter.java
++++ b/worldgen-tools/src/main/java/dev/lemma/finiteworlds/tools/PreviewWriter.java
+@@ -9,6 +9,8 @@
+ import dev.lemma.finiteworlds.core.geography.MountainSpine;
+ import dev.lemma.finiteworlds.core.geography.TerrainProvince;
+ import dev.lemma.finiteworlds.core.hydrology.Depression;
++import dev.lemma.finiteworlds.core.hydrology.DepressionClass;
++import dev.lemma.finiteworlds.core.hydrology.DepressionClassification;
+ import dev.lemma.finiteworlds.core.hydrology.FlowDirection;
+ import dev.lemma.finiteworlds.core.hydrology.HydrologyGrid;
+ import dev.lemma.finiteworlds.core.terrain.TerrainSampler;
+@@ -225,6 +227,20 @@
+                         "hydrology-spill-points.png"
+                 )
+         );
++
++        writeHydrologyDepressionClasses(
++                world,
++                directory.resolve(
++                        "hydrology-depression-classes.png"
++                )
++        );
++
++        writeHydrologyDepressionChains(
++                world,
++                directory.resolve(
++                        "hydrology-depression-chains.png"
++                )
++        );
+     }
+ 
+     private static void writeLandMask(
+@@ -2158,6 +2174,251 @@
+     }
+ 
+ 
++    private static void writeHydrologyDepressionClasses(
++            WorldBlueprint world,
++            Path path
++    ) throws IOException {
++
++        int size =
++                world.resolution();
++
++        HydrologyGrid hydrology =
++                world.hydrology();
++
++        BufferedImage image =
++                new BufferedImage(
++                        size,
++                        size,
++                        BufferedImage.TYPE_INT_RGB
++                );
++
++        for (int z = 0; z < size; z++) {
++            for (int x = 0; x < size; x++) {
++                int id =
++                        hydrology.depressionId(
++                                x,
++                                z
++                        );
++
++                DepressionClassification classification =
++                        hydrology.depressionClassification(id);
++
++                if (classification == null) {
++                    image.setRGB(
++                            x,
++                            z,
++                            rgb(0, 0, 0)
++                    );
++                    continue;
++                }
++
++                int color =
++                        switch (classification.depressionClass()) {
++                            case MICRO_PIT -> rgb(245, 65, 65);
++                            case SHALLOW_BASIN -> rgb(245, 205, 55);
++                            case ALPINE_BASIN -> rgb(55, 220, 235);
++                            case MAJOR_INTERIOR_BASIN -> rgb(65, 105, 245);
++                            case COMPOUND_BASIN -> rgb(230, 65, 220);
++                        };
++
++                image.setRGB(
++                        x,
++                        z,
++                        color
++                );
++            }
++        }
++
++        ImageIO.write(
++                image,
++                "PNG",
++                path.toFile()
++        );
++    }
++
++
++    private static void writeHydrologyDepressionChains(
++            WorldBlueprint world,
++            Path path
++    ) throws IOException {
++
++        int size =
++                world.resolution();
++
++        HydrologyGrid hydrology =
++                world.hydrology();
++
++        BufferedImage image =
++                new BufferedImage(
++                        size,
++                        size,
++                        BufferedImage.TYPE_INT_RGB
++                );
++
++        for (int z = 0; z < size; z++) {
++            for (int x = 0; x < size; x++) {
++                image.setRGB(
++                        x,
++                        z,
++                        hydrology.depressionId(x, z) >= 0
++                                ? rgb(28, 28, 28)
++                                : rgb(0, 0, 0)
++                );
++            }
++        }
++
++        List<Depression> depressions =
++                hydrology.depressions();
++
++        for (Depression depression : depressions) {
++            DepressionClassification classification =
++                    hydrology.depressionClassification(
++                            depression.id()
++                    );
++
++            if (classification == null) {
++                continue;
++            }
++
++            int targetId =
++                    classification.downstreamDepressionId();
++
++            if (
++                    targetId >= 0
++                            && targetId < depressions.size()
++            ) {
++                Depression target =
++                        depressions.get(targetId);
++
++                drawLine(
++                        image,
++                        depression.sinkX(),
++                        depression.sinkZ(),
++                        target.sinkX(),
++                        target.sinkZ(),
++                        classification.belongsToCompoundGroup()
++                                ? rgb(155, 40, 150)
++                                : rgb(75, 90, 120)
++                );
++            }
++        }
++
++        for (Depression depression : depressions) {
++            DepressionClassification classification =
++                    hydrology.depressionClassification(
++                            depression.id()
++                    );
++
++            if (classification == null) {
++                continue;
++            }
++
++            int markerColor;
++
++            if (classification.belongsToCompoundGroup()) {
++                markerColor =
++                        rgb(245, 70, 230);
++            } else if (classification.drainsDirectlyOutsideDepressionSystem()) {
++                markerColor =
++                        rgb(45, 225, 235);
++            } else {
++                int intensity =
++                        Math.min(
++                                255,
++                                105 + classification.chainDepth() * 28
++                        );
++
++                markerColor =
++                        rgb(
++                                intensity,
++                                Math.max(75, 235 - classification.chainDepth() * 24),
++                                55
++                        );
++            }
++
++            drawMarker(
++                    image,
++                    depression.sinkX(),
++                    depression.sinkZ(),
++                    markerColor
++            );
++        }
++
++        ImageIO.write(
++                image,
++                "PNG",
++                path.toFile()
++        );
++    }
++
++
++    private static void drawLine(
++            BufferedImage image,
++            int x0,
++            int z0,
++            int x1,
++            int z1,
++            int color
++    ) {
++        int dx =
++                Math.abs(x1 - x0);
++
++        int dz =
++                Math.abs(z1 - z0);
++
++        int stepX =
++                x0 < x1
++                        ? 1
++                        : -1;
++
++        int stepZ =
++                z0 < z1
++                        ? 1
++                        : -1;
++
++        int error =
++                dx - dz;
++
++        int x =
++                x0;
++
++        int z =
++                z0;
++
++        while (true) {
++            if (
++                    x >= 0
++                            && x < image.getWidth()
++                            && z >= 0
++                            && z < image.getHeight()
++            ) {
++                image.setRGB(
++                        x,
++                        z,
++                        color
++                );
++            }
++
++            if (x == x1 && z == z1) {
++                break;
++            }
++
++            int doubledError =
++                    error * 2;
++
++            if (doubledError > -dz) {
++                error -= dz;
++                x += stepX;
++            }
++
++            if (doubledError < dx) {
++                error += dx;
++                z += stepZ;
++            }
++        }
++    }
++
++
+     private static void drawMarker(
+             BufferedImage image,
+             int centerX,
+--- a/src/main/java/dev/lemma/finiteworlds/worldgen/FiniteChunkGenerator.java
++++ b/src/main/java/dev/lemma/finiteworlds/worldgen/FiniteChunkGenerator.java
+@@ -39,8 +39,24 @@
+ 
+     public static final int SEA_LEVEL = 64;
+ 
+-    public static final int MIN_Y = -64;
+-    public static final int WORLD_HEIGHT = 384;
++    /*
++     * Final planned Finite Worlds vertical envelope.
++     *
++     * Keep the current prototype terrain itself on the familiar -64+ scale
++     * while development continues, but allocate the eventual dimension height
++     * now so exceptional terrain such as the landmark volcano is no longer
++     * clipped at vanilla Overworld Y=319.
++     */
++    public static final int MIN_Y = -512;
++    public static final int WORLD_HEIGHT = 2048;
++    public static final int MAX_Y = MIN_Y + WORLD_HEIGHT - 1;
++
++    /*
++     * Temporary development terrain floor. Blocks below this level remain air
++     * for now, avoiding the cost of filling an extra 448 vertical blocks per
++     * column before the deep-world geology/cave pass exists.
++     */
++    public static final int DEVELOPMENT_TERRAIN_MIN_Y = -64;
+ 
+     private final TerrainSampler terrainSampler;
+ 
+@@ -140,7 +156,7 @@
+                         );
+ 
+                 for (
+-                        int y = MIN_Y;
++                        int y = DEVELOPMENT_TERRAIN_MIN_Y;
+                         y <= height;
+                         y++
+                 ) {
+@@ -236,7 +252,7 @@
+                 surfaceHeight(x, z);
+ 
+         for (
+-                int y = MIN_Y;
++                int y = DEVELOPMENT_TERRAIN_MIN_Y;
+                 y <= surface;
+                 y++
+         ) {
+@@ -283,15 +299,10 @@
+                         elevation
+                 );
+ 
+-        int maximumY =
+-                MIN_Y
+-                        + WORLD_HEIGHT
+-                        - 1;
+-
+         return Math.max(
+-                MIN_Y,
++                DEVELOPMENT_TERRAIN_MIN_Y,
+                 Math.min(
+-                        maximumY,
++                        MAX_Y,
+                         height
+                 )
+         );
+--- a/src/main/resources/data/finite-worlds/worldgen/world_preset/cascadia.json
++++ b/src/main/resources/data/finite-worlds/worldgen/world_preset/cascadia.json
+@@ -1,7 +1,7 @@
+ {
+   "dimensions": {
+     "minecraft:overworld": {
+-      "type": "minecraft:overworld",
++      "type": "finite-worlds:cascadia",
+       "generator": {
+         "type": "finite-worlds:finite",
+         "seed": 12345,
+--- /dev/null
++++ b/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/hydrology/DepressionClass.java
+@@ -0,0 +1,16 @@
++package dev.lemma.finiteworlds.core.hydrology;
++
++/**
++ * Provisional hydrologic interpretation of a raw depression.
++ *
++ * Pass 1D is diagnostic only. These labels describe how a basin currently
++ * looks in the macro terrain and do not yet decide whether it will be filled,
++ * breached, merged, or preserved as a lake.
++ */
++public enum DepressionClass {
++    MICRO_PIT,
++    SHALLOW_BASIN,
++    ALPINE_BASIN,
++    MAJOR_INTERIOR_BASIN,
++    COMPOUND_BASIN
++}
+--- /dev/null
++++ b/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/hydrology/DepressionClassification.java
+@@ -0,0 +1,33 @@
++package dev.lemma.finiteworlds.core.hydrology;
++
++import dev.lemma.finiteworlds.core.geography.TerrainProvince;
++
++/**
++ * Diagnostic classification and network metadata for one raw depression.
++ *
++ * The downstream graph is intentionally left untouched. A compound group is
++ * a true directed cycle in the first-spill graph (usually two neighboring raw
++ * basins that identify the same saddle as their cheapest mutual escape).
++ */
++public record DepressionClassification(
++        int depressionId,
++        DepressionClass depressionClass,
++        float meanDepth,
++        float coastDistanceBlocks,
++        TerrainProvince terrainProvince,
++        int downstreamDepressionId,
++        int terminalDepressionId,
++        int chainDepth,
++        int directUpstreamCount,
++        int compoundGroupId,
++        int compoundMemberCount
++) {
++
++    public boolean drainsDirectlyOutsideDepressionSystem() {
++        return downstreamDepressionId < 0;
++    }
++
++    public boolean belongsToCompoundGroup() {
++        return compoundGroupId >= 0;
++    }
++}
+--- /dev/null
++++ b/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/hydrology/DepressionClassifier.java
+@@ -0,0 +1,475 @@
++package dev.lemma.finiteworlds.core.hydrology;
++
++import dev.lemma.finiteworlds.core.WorldBlueprint;
++import dev.lemma.finiteworlds.core.geography.TerrainProvince;
++
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++
++/**
++ * Hydrology Pass 1D: diagnostic depression classification and spill-network
++ * analysis.
++ *
++ * This pass still performs no hydrologic conditioning. It labels raw basins,
++ * measures mean depth, detects reciprocal/compound spill cycles, and records
++ * how each basin connects downstream. Pass 1E can use this information to
++ * decide which basins should be filled, breached, merged, or preserved.
++ */
++public final class DepressionClassifier {
++
++    private DepressionClassifier() {
++    }
++
++    public static void classify(
++            WorldBlueprint world
++    ) {
++        HydrologyGrid hydrology =
++                world.hydrology();
++
++        List<Depression> depressions =
++                hydrology.depressions();
++
++        if (depressions.isEmpty()) {
++            hydrology.setDepressionClassifications(
++                    List.of(),
++                    0
++            );
++            return;
++        }
++
++        int count =
++                depressions.size();
++
++        double[] depthSum =
++                new double[count];
++
++        int[] measuredDepthCells =
++                new int[count];
++
++        accumulateDepthStatistics(
++                hydrology,
++                depthSum,
++                measuredDepthCells
++        );
++
++        int[] directUpstreamCount =
++                countDirectUpstream(
++                        depressions
++                );
++
++        CompoundGroups compounds =
++                findCompoundGroups(
++                        depressions
++                );
++
++        NetworkPosition[] networkPositions =
++                resolveNetworkPositions(
++                        depressions,
++                        compounds.groupByDepression()
++                );
++
++        List<DepressionClassification> result =
++                new ArrayList<>(count);
++
++        for (int id = 0; id < count; id++) {
++            Depression depression =
++                    depressions.get(id);
++
++            float meanDepth =
++                    measuredDepthCells[id] > 0
++                            ? (float) (
++                            depthSum[id]
++                                    / measuredDepthCells[id]
++                    )
++                            : 0.0f;
++
++            TerrainProvince province =
++                    world.terrainProvince(
++                            depression.sinkX(),
++                            depression.sinkZ()
++                    );
++
++            float coastDistance =
++                    Math.max(
++                            0.0f,
++                            world.coastDistance(
++                                    depression.sinkX(),
++                                    depression.sinkZ()
++                            )
++                    );
++
++            int compoundGroup =
++                    compounds.groupByDepression()[id];
++
++            int compoundMembers =
++                    compoundGroup >= 0
++                            ? compounds.groupSizes()[compoundGroup]
++                            : 0;
++
++            DepressionClass depressionClass =
++                    classifyDepression(
++                            depression,
++                            meanDepth,
++                            province,
++                            compoundGroup >= 0
++                    );
++
++            NetworkPosition network =
++                    networkPositions[id];
++
++            result.add(
++                    new DepressionClassification(
++                            id,
++                            depressionClass,
++                            meanDepth,
++                            coastDistance,
++                            province,
++                            depression.spillTargetDepressionId(),
++                            network.terminalDepressionId(),
++                            network.chainDepth(),
++                            directUpstreamCount[id],
++                            compoundGroup,
++                            compoundMembers
++                    )
++            );
++        }
++
++        hydrology.setDepressionClassifications(
++                result,
++                compounds.groupSizes().length
++        );
++    }
++
++    private static void accumulateDepthStatistics(
++            HydrologyGrid hydrology,
++            double[] depthSum,
++            int[] depthCells
++    ) {
++        int size =
++                hydrology.resolution();
++
++        for (int z = 0; z < size; z++) {
++            for (int x = 0; x < size; x++) {
++                int id =
++                        hydrology.depressionId(
++                                x,
++                                z
++                        );
++
++                if (id < 0) {
++                    continue;
++                }
++
++                depthSum[id] +=
++                        hydrology.depressionDepth(
++                                x,
++                                z
++                        );
++
++                depthCells[id]++;
++            }
++        }
++    }
++
++    private static int[] countDirectUpstream(
++            List<Depression> depressions
++    ) {
++        int[] result =
++                new int[depressions.size()];
++
++        for (Depression depression : depressions) {
++            int target =
++                    depression.spillTargetDepressionId();
++
++            if (
++                    target >= 0
++                            && target < result.length
++            ) {
++                result[target]++;
++            }
++        }
++
++        return result;
++    }
++
++    private static CompoundGroups findCompoundGroups(
++            List<Depression> depressions
++    ) {
++        int count =
++                depressions.size();
++
++        int[] groupByDepression =
++                new int[count];
++
++        Arrays.fill(
++                groupByDepression,
++                -1
++        );
++
++        boolean[] processed =
++                new boolean[count];
++
++        List<Integer> groupSizes =
++                new ArrayList<>();
++
++        for (int start = 0; start < count; start++) {
++            if (processed[start]) {
++                continue;
++            }
++
++            List<Integer> path =
++                    new ArrayList<>();
++
++            Map<Integer, Integer> pathPosition =
++                    new HashMap<>();
++
++            int current =
++                    start;
++
++            while (
++                    current >= 0
++                            && current < count
++                            && !processed[current]
++                            && !pathPosition.containsKey(current)
++            ) {
++                pathPosition.put(
++                        current,
++                        path.size()
++                );
++
++                path.add(current);
++
++                current =
++                        depressions.get(current)
++                                .spillTargetDepressionId();
++            }
++
++            Integer cycleStart =
++                    pathPosition.get(current);
++
++            if (cycleStart != null) {
++                int cycleLength =
++                        path.size()
++                                - cycleStart;
++
++                /*
++                 * A one-node self-loop is not expected from Pass 1C and does
++                 * not represent a useful compound group. True mutual cycles
++                 * contain two or more raw depressions.
++                 */
++                if (cycleLength >= 2) {
++                    int groupId =
++                            groupSizes.size();
++
++                    groupSizes.add(
++                            cycleLength
++                    );
++
++                    for (
++                            int i = cycleStart;
++                            i < path.size();
++                            i++
++                    ) {
++                        groupByDepression[path.get(i)] =
++                                groupId;
++                    }
++                }
++            }
++
++            for (int id : path) {
++                processed[id] = true;
++            }
++        }
++
++        int[] sizes =
++                new int[groupSizes.size()];
++
++        for (int i = 0; i < sizes.length; i++) {
++            sizes[i] =
++                    groupSizes.get(i);
++        }
++
++        return new CompoundGroups(
++                groupByDepression,
++                sizes
++        );
++    }
++
++    private static NetworkPosition[] resolveNetworkPositions(
++            List<Depression> depressions,
++            int[] compoundGroup
++    ) {
++        NetworkPosition[] result =
++                new NetworkPosition[depressions.size()];
++
++        for (int start = 0; start < depressions.size(); start++) {
++            if (result[start] != null) {
++                continue;
++            }
++
++            List<Integer> path =
++                    new ArrayList<>();
++
++            int current =
++                    start;
++
++            while (
++                    current >= 0
++                            && current < depressions.size()
++                            && result[current] == null
++                            && compoundGroup[current] < 0
++            ) {
++                path.add(current);
++
++                current =
++                        depressions.get(current)
++                                .spillTargetDepressionId();
++            }
++
++            int terminal;
++            int depth;
++
++            if (
++                    current >= 0
++                            && current < depressions.size()
++                            && compoundGroup[current] >= 0
++            ) {
++                terminal =
++                        compoundRepresentative(
++                                compoundGroup[current],
++                                compoundGroup
++                        );
++
++                depth = 0;
++
++                int groupId =
++                        compoundGroup[current];
++
++                for (int id = 0; id < compoundGroup.length; id++) {
++                    if (compoundGroup[id] == groupId) {
++                        result[id] =
++                                new NetworkPosition(
++                                        terminal,
++                                        0
++                                );
++                    }
++                }
++            } else if (
++                    current >= 0
++                            && current < depressions.size()
++                            && result[current] != null
++            ) {
++                terminal =
++                        result[current]
++                                .terminalDepressionId();
++
++                depth =
++                        result[current]
++                                .chainDepth();
++            } else {
++                terminal =
++                        -1;
++
++                depth =
++                        0;
++            }
++
++            for (int i = path.size() - 1; i >= 0; i--) {
++                depth++;
++
++                result[path.get(i)] =
++                        new NetworkPosition(
++                                terminal,
++                                depth
++                        );
++            }
++        }
++
++        return result;
++    }
++
++    private static int compoundRepresentative(
++            int groupId,
++            int[] groupByDepression
++    ) {
++        for (int id = 0; id < groupByDepression.length; id++) {
++            if (groupByDepression[id] == groupId) {
++                return id;
++            }
++        }
++
++        return -1;
++    }
++
++    private static DepressionClass classifyDepression(
++            Depression depression,
++            float meanDepth,
++            TerrainProvince province,
++            boolean compound
++    ) {
++        if (compound) {
++            return DepressionClass.COMPOUND_BASIN;
++        }
++
++        if (
++                depression.footprintCellCount() <= 2
++                        && depression.catchmentCellCount() <= 24
++                        && depression.maximumDepth() <= 1.50f
++        ) {
++            return DepressionClass.MICRO_PIT;
++        }
++
++        if (
++                depression.footprintCellCount() >= 96
++                        || depression.catchmentCellCount() >= 2_000
++                        || depression.maximumDepth() >= 10.0f
++                        || (
++                        depression.footprintCellCount() >= 48
++                                && depression.maximumDepth() >= 5.0f
++                )
++                        || meanDepth >= 3.0f
++        ) {
++            return DepressionClass.MAJOR_INTERIOR_BASIN;
++        }
++
++        if (
++                isMountainProvince(province)
++                        && (
++                        depression.minimumElevation() >= 130.0f
++                                || depression.maximumDepth() >= 2.0f
++                )
++        ) {
++            return DepressionClass.ALPINE_BASIN;
++        }
++
++        return DepressionClass.SHALLOW_BASIN;
++    }
++
++    private static boolean isMountainProvince(
++            TerrainProvince province
++    ) {
++        return switch (province) {
++            case COAST_RANGE,
++                 CASCADE_FOOTHILLS,
++                 CASCADE_CORE,
++                 EASTERN_SLOPES -> true;
++
++            default -> false;
++        };
++    }
++
++    private record CompoundGroups(
++            int[] groupByDepression,
++            int[] groupSizes
++    ) {
++    }
++
++    private record NetworkPosition(
++            int terminalDepressionId,
++            int chainDepth
++    ) {
++    }
++}
+--- /dev/null
++++ b/src/main/resources/data/finite-worlds/dimension_type/cascadia.json
+@@ -0,0 +1,24 @@
++{
++  "ultrawarm": false,
++  "natural": true,
++  "piglin_safe": false,
++  "respawn_anchor_works": false,
++  "bed_works": true,
++  "has_raids": true,
++  "has_skylight": true,
++  "has_ceiling": false,
++  "coordinate_scale": 1.0,
++  "ambient_light": 0.0,
++  "logical_height": 2048,
++  "effects": "minecraft:overworld",
++  "infiniburn": "#minecraft:infiniburn_overworld",
++  "min_y": -512,
++  "height": 2048,
++  "cloud_height": 192,
++  "monster_spawn_light_level": {
++    "type": "minecraft:uniform",
++    "min_inclusive": 0,
++    "max_inclusive": 7
++  },
++  "monster_spawn_block_light_limit": 0
++}
