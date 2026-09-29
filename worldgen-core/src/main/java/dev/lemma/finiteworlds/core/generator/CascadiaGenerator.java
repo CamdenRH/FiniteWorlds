@@ -15,6 +15,7 @@ import dev.lemma.finiteworlds.core.geography.PhysiographySampler;
 
 import dev.lemma.finiteworlds.core.noise.ValueNoise;
 import dev.lemma.finiteworlds.core.hydrology.DepressionAnalyzer;
+import dev.lemma.finiteworlds.core.hydrology.FlowAccumulator;
 import dev.lemma.finiteworlds.core.hydrology.DrainageRouter;
 import dev.lemma.finiteworlds.core.hydrology.DepressionClassifier;
 import dev.lemma.finiteworlds.core.hydrology.CompoundBasinAnalyzer;
@@ -22,6 +23,18 @@ import dev.lemma.finiteworlds.core.hydrology.DepressionResolutionPlanner;
 import dev.lemma.finiteworlds.core.hydrology.HydrologyConditioner;
 import dev.lemma.finiteworlds.core.hydrology.HydrologyPlanner;
 import dev.lemma.finiteworlds.core.hydrology.LakePlanner;
+import dev.lemma.finiteworlds.core.hydrology.StreamNetworkExtractor;
+import dev.lemma.finiteworlds.core.hydrology.RiverGraphBuilder;
+import dev.lemma.finiteworlds.core.hydrology.RiverHierarchyAnalyzer;
+import dev.lemma.finiteworlds.core.hydrology.RiverMagnitudeAnalyzer;
+import dev.lemma.finiteworlds.core.hydrology.RiverContinuityAnalyzer;
+import dev.lemma.finiteworlds.core.hydrology.RiverGradePlanner;
+import dev.lemma.finiteworlds.core.hydrology.RiverCenterlineSynthesizer;
+import dev.lemma.finiteworlds.core.hydrology.RiverValleyCorridorPlanner;
+import dev.lemma.finiteworlds.core.hydrology.RiverCrossSectionPlanner;
+import dev.lemma.finiteworlds.core.hydrology.RiverCarvingConstraintPlanner;
+import dev.lemma.finiteworlds.core.hydrology.RiverTerrainIntegrator;
+import dev.lemma.finiteworlds.core.hydrology.RiverChannelIntegrator;
 
 
 public final class CascadiaGenerator {
@@ -34,7 +47,6 @@ public final class CascadiaGenerator {
                 seed
         );
     }
-
 
     public WorldBlueprint generate(
             long seed,
@@ -350,6 +362,131 @@ public final class CascadiaGenerator {
                 blueprint
         );
 
+        /*
+         * Hydrology Pass 2A propagates one unit of contributing area from
+         * every non-ocean cell through the final sink-free, acyclic routing
+         * graph. This produces drainage accumulation only; no stream
+         * thresholding, river classification, erosion, or terrain mutation
+         * occurs yet.
+         */
+        FlowAccumulator.compute(
+                blueprint
+        );
+
+        /*
+         * Hydrology Pass 2B extracts a provisional macro channel network
+         * from flow accumulation. Channel initiation is terrain-aware and
+         * then remains continuous downstream. This is still diagnostic-only:
+         * no terrain carving, final width assignment, or water placement.
+         */
+        StreamNetworkExtractor.extract(
+                blueprint
+        );
+
+        /*
+         * Hydrology Pass 2C turns the classified macro stream mask into an
+         * explicit directed river graph with source, confluence, lake, and
+         * mouth nodes connected by coarse channel/lake segments. This remains
+         * topological only; no channel carving or width synthesis occurs.
+         */
+        RiverGraphBuilder.build(
+                blueprint
+        );
+
+        /*
+         * Hydrology Pass 2D derives graph-level river hierarchy from the
+         * explicit Pass-2C network. Strahler order, upstream network size,
+         * and source/mouth distances are metadata only; terrain and channel
+         * geometry remain unchanged.
+         */
+        RiverHierarchyAnalyzer.analyze(
+                blueprint
+        );
+
+        /*
+         * Hydrology Pass 2E derives provisional river magnitude and physical
+         * channel scale from catchment accumulation, graph hierarchy, channel
+         * slope, and upstream network length. These values assume uniform
+         * runoff and remain metadata only; no channel carving occurs here.
+         */
+        RiverMagnitudeAnalyzer.analyze(
+                blueprint
+        );
+
+        /*
+         * Hydrology Pass 2F turns independent per-segment channel dimensions
+         * into node-continuous longitudinal profiles. Width/depth are smoothed
+         * through confluences and lake transitions while preserving the same
+         * graph and terrain.
+         */
+        RiverContinuityAnalyzer.analyze(
+                blueprint
+        );
+
+        /*
+         * Hydrology Pass 2F.1 converts the topologically valid but sometimes
+         * locally uphill river routes into monotonic planned channel-bed
+         * grades. The resulting incision requirements remain metadata only;
+         * terrain is not carved until the later physical-channel passes.
+         */
+        RiverGradePlanner.analyze(
+                blueprint
+        );
+
+        /*
+         * Hydrology Pass 2G replaces the coarse D8 segment geometry with
+         * smooth block-space centerlines constrained to a terrain-aware
+         * corridor around the validated macro river graph. Planned bed grade
+         * and channel dimensions are carried forward as metadata only; no
+         * terrain carving occurs in this pass.
+         */
+        RiverCenterlineSynthesizer.synthesize(
+                blueprint,
+                seed
+        );
+
+        /*
+         * Hydrology Pass 2H plans a narrow channel corridor plus broader
+         * floodplain/valley envelopes around the physical centerlines. Local
+         * slope, terrain province, river magnitude, and cross-valley relief
+         * determine how confined each reach is. This remains metadata only;
+         * no valley or channel carving occurs in this pass.
+         */
+        RiverValleyCorridorPlanner.plan(
+                blueprint
+        );
+
+        /*
+         * Hydrology Pass 2I resolves the actual river and near-bank geometry
+         * that lives inside each 2H permission envelope. This remains metadata
+         * only: no terrain elevations are modified yet.
+         */
+        RiverCrossSectionPlanner.plan(
+                blueprint
+        );
+
+        /*
+         * Hydrology Pass 2J converts the 2H/2I river geometry into explicit
+         * terrain-modification limits and vertically conditioned targets.
+         * It remains non-destructive: later passes consume these constraints
+         * when they actually integrate valleys, floodplains, and channels.
+         */
+        RiverCarvingConstraintPlanner.plan(
+                blueprint
+        );
+
+        /*
+         * Hydrology Pass 2K performs the first destructive terrain integration.
+         * It reshapes valley and floodplain terrain toward the 2J targets while
+         * leaving final channel incision to Pass 2L.
+         */
+        RiverTerrainIntegrator.integrate(
+                blueprint
+        );
+
+        RiverChannelIntegrator.integrate(
+                blueprint
+        );
 
         return blueprint;
     }

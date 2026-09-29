@@ -19,14 +19,41 @@ import dev.lemma.finiteworlds.core.hydrology.HydrologyGrid;
 import dev.lemma.finiteworlds.core.hydrology.HydrologyRouteType;
 import dev.lemma.finiteworlds.core.hydrology.Lake;
 import dev.lemma.finiteworlds.core.hydrology.LakeSourceType;
+import dev.lemma.finiteworlds.core.hydrology.RiverNode;
+import dev.lemma.finiteworlds.core.hydrology.RiverNodeType;
+import dev.lemma.finiteworlds.core.hydrology.RiverSegment;
+import dev.lemma.finiteworlds.core.hydrology.RiverSegmentType;
+import dev.lemma.finiteworlds.core.hydrology.RiverSegmentHierarchy;
+import dev.lemma.finiteworlds.core.hydrology.RiverSegmentMagnitude;
+import dev.lemma.finiteworlds.core.hydrology.RiverSegmentProfile;
+import dev.lemma.finiteworlds.core.hydrology.RiverSegmentGradePlan;
+import dev.lemma.finiteworlds.core.hydrology.RiverCenterlinePoint;
+import dev.lemma.finiteworlds.core.hydrology.RiverSegmentCenterline;
+import dev.lemma.finiteworlds.core.hydrology.RiverSegmentValleyCorridor;
+import dev.lemma.finiteworlds.core.hydrology.RiverValleyCorridorPoint;
+import dev.lemma.finiteworlds.core.hydrology.RiverCrossSectionPoint;
+import dev.lemma.finiteworlds.core.hydrology.RiverSegmentCrossSection;
+import dev.lemma.finiteworlds.core.hydrology.RiverReachType;
+import dev.lemma.finiteworlds.core.hydrology.RiverCarvingConstraintPoint;
+import dev.lemma.finiteworlds.core.hydrology.RiverSegmentCarvingConstraints;
+import dev.lemma.finiteworlds.core.hydrology.RiverScale;
+import dev.lemma.finiteworlds.core.hydrology.StreamClass;
 import dev.lemma.finiteworlds.core.terrain.TerrainSampler;
 
 import javax.imageio.ImageIO;
+import java.awt.BasicStroke;
 import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.awt.geom.Path2D;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 public final class PreviewWriter {
@@ -357,6 +384,280 @@ public final class PreviewWriter {
                 world,
                 directory.resolve(
                         "hydrology-final-sinks.png"
+                )
+        );
+
+        writeHydrologyFlowAccumulation(
+                world,
+                directory.resolve(
+                        "hydrology-flow-accumulation.png"
+                ),
+                false
+        );
+
+        writeHydrologyFlowAccumulation(
+                world,
+                directory.resolve(
+                        "hydrology-flow-accumulation-log.png"
+                ),
+                true
+        );
+
+        writeHydrologyStreamNetwork(
+                world,
+                directory.resolve(
+                        "hydrology-stream-network.png"
+                ),
+                false
+        );
+
+        writeHydrologyStreamNetwork(
+                world,
+                directory.resolve(
+                        "hydrology-stream-network-relief.png"
+                ),
+                true
+        );
+
+        writeHydrologyStreamInitiationThreshold(
+                world,
+                directory.resolve(
+                        "hydrology-stream-initiation-threshold.png"
+                )
+        );
+
+        writeHydrologyRiverGraph(
+                world,
+                directory.resolve(
+                        "hydrology-river-graph.png"
+                )
+        );
+
+        writeHydrologyRiverNodes(
+                world,
+                directory.resolve(
+                        "hydrology-river-nodes.png"
+                )
+        );
+
+        writeHydrologyRiverStrahlerOrder(
+                world,
+                directory.resolve(
+                        "hydrology-river-strahler-order.png"
+                )
+        );
+
+        writeHydrologyRiverSegmentHierarchy(
+                world,
+                directory.resolve(
+                        "hydrology-river-segment-hierarchy.png"
+                )
+        );
+
+        writeHydrologyRiverMagnitude(
+                world,
+                directory.resolve(
+                        "hydrology-river-magnitude.png"
+                )
+        );
+
+        writeHydrologyRiverWidth(
+                world,
+                directory.resolve(
+                        "hydrology-river-width.png"
+                )
+        );
+
+        writeHydrologyRiverSlope(
+                world,
+                directory.resolve(
+                        "hydrology-river-slope.png"
+                )
+        );
+
+        writeHydrologyRiverSmoothedWidth(
+                world,
+                directory.resolve(
+                        "hydrology-river-width-smoothed.png"
+                )
+        );
+
+        writeHydrologyRiverContinuity(
+                world,
+                directory.resolve(
+                        "hydrology-river-continuity.png"
+                )
+        );
+
+        writeHydrologyRiverLongitudinalProfiles(
+                world,
+                directory.resolve(
+                        "hydrology-river-longitudinal-profiles.png"
+                )
+        );
+
+        writeHydrologyRiverPlannedGrade(
+                world,
+                directory.resolve(
+                        "hydrology-river-planned-grade.png"
+                )
+        );
+
+        writeHydrologyRiverGradeCorrection(
+                world,
+                directory.resolve(
+                        "hydrology-river-grade-correction.png"
+                )
+        );
+
+        writeHydrologyRiverLongitudinalProfilesCorrected(
+                world,
+                directory.resolve(
+                        "hydrology-river-longitudinal-profiles-corrected.png"
+                )
+        );
+
+        writeHydrologyRiverCenterlines(
+                world,
+                directory.resolve(
+                        "hydrology-river-centerlines.png"
+                ),
+                false
+        );
+
+        writeHydrologyRiverCenterlines(
+                world,
+                directory.resolve(
+                        "hydrology-river-centerlines-relief.png"
+                ),
+                true
+        );
+
+        writeHydrologyRiverCenterlineOffset(
+                world,
+                directory.resolve(
+                        "hydrology-river-centerline-offset.png"
+                )
+        );
+
+        writeHydrologyRiverCenterlineDetail(
+                world,
+                directory.resolve(
+                        "hydrology-river-centerline-detail.png"
+                )
+        );
+
+        writeHydrologyRiverChannelCorridor(
+                world,
+                directory.resolve(
+                        "hydrology-river-channel-corridor.png"
+                )
+        );
+
+        writeHydrologyRiverValleyCorridor(
+                world,
+                directory.resolve(
+                        "hydrology-river-valley-corridor.png"
+                ),
+                false
+        );
+
+        writeHydrologyRiverValleyCorridor(
+                world,
+                directory.resolve(
+                        "hydrology-river-valley-corridor-relief.png"
+                ),
+                true
+        );
+
+        writeHydrologyRiverConfinement(
+                world,
+                directory.resolve(
+                        "hydrology-river-confinement.png"
+                )
+        );
+
+        writeHydrologyRiverBankfullChannel(
+                world,
+                directory.resolve(
+                        "hydrology-river-bankfull-channel.png"
+                )
+        );
+
+        writeHydrologyRiverCrossSectionType(
+                world,
+                directory.resolve(
+                        "hydrology-river-cross-section-type.png"
+                )
+        );
+
+        writeHydrologyRiverCrossSectionAsymmetry(
+                world,
+                directory.resolve(
+                        "hydrology-river-cross-section-asymmetry.png"
+                )
+        );
+
+        writeHydrologyRiverCarvingStrength(
+                world,
+                directory.resolve(
+                        "hydrology-river-carving-strength.png"
+                )
+        );
+
+        writeHydrologyRiverCutBudget(
+                world,
+                directory.resolve(
+                        "hydrology-river-cut-budget.png"
+                )
+        );
+
+        writeHydrologyRiverFloodplainTarget(
+                world,
+                directory.resolve(
+                        "hydrology-river-floodplain-target.png"
+                )
+        );
+
+        writeHydrologyRiverTerrainDelta(
+                world,
+                directory.resolve(
+                        "hydrology-river-terrain-delta.png"
+                )
+        );
+
+        writeHydrologyRiverIntegratedRelief(
+                world,
+                directory.resolve(
+                        "hydrology-river-integrated-relief.png"
+                )
+        );
+
+        writeHydrologyRiverValleyFloor(
+                world,
+                directory.resolve(
+                        "hydrology-river-valley-floor.png"
+                )
+        );
+
+        writeHydrologyRiverChannelIncision(
+                world,
+                directory.resolve(
+                        "hydrology-river-channel-incision.png"
+                )
+        );
+
+        writeHydrologyRiverWaterSurface(
+                world,
+                directory.resolve(
+                        "hydrology-river-water-surface.png"
+                )
+        );
+
+        writeHydrologyRiverFinalRelief(
+                world,
+                directory.resolve(
+                        "hydrology-river-final-relief.png"
                 )
         );
     }
@@ -3701,6 +4002,4239 @@ public final class PreviewWriter {
                 "PNG",
                 path.toFile()
         );
+    }
+
+
+    private static void writeHydrologyFlowAccumulation(
+            WorldBlueprint world,
+            Path path,
+            boolean logarithmic
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        long maximum =
+                Math.max(
+                        1L,
+                        hydrology.maximumFlowAccumulation()
+                );
+
+        double logMaximum =
+                Math.log1p(maximum);
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                if (
+                        hydrology.routedFlowDirection(x, z)
+                                == FlowDirection.OCEAN
+                ) {
+                    image.setRGB(
+                            x,
+                            z,
+                            rgb(0, 0, 0)
+                    );
+                    continue;
+                }
+
+                long accumulation =
+                        hydrology.flowAccumulation(
+                                x,
+                                z
+                        );
+
+                double normalized =
+                        logarithmic
+                                ? Math.log1p(accumulation) / logMaximum
+                                : accumulation / (double) maximum;
+
+                int gray =
+                        clamp255(
+                                normalized * 255.0
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        (gray << 16)
+                                | (gray << 8)
+                                | gray
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyStreamNetwork(
+            WorldBlueprint world,
+            Path path,
+            boolean reliefBackground
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                int background =
+                        rgb(0, 0, 0);
+
+                if (reliefBackground && world.landMask(x, z) >= 0.5f) {
+                    int west = Math.max(0, x - 1);
+                    int east = Math.min(size - 1, x + 1);
+                    int north = Math.max(0, z - 1);
+                    int south = Math.min(size - 1, z + 1);
+
+                    double dx =
+                            world.elevation(east, z)
+                                    - world.elevation(west, z);
+
+                    double dz =
+                            world.elevation(x, south)
+                                    - world.elevation(x, north);
+
+                    int shade =
+                            clamp255(
+                                    (0.33
+                                            - dx * 0.0032
+                                            - dz * 0.0032)
+                                            * 255.0
+                            );
+
+                    background =
+                            rgb(
+                                    shade,
+                                    shade,
+                                    shade
+                            );
+                }
+
+                StreamClass streamClass =
+                        hydrology.streamClass(
+                                x,
+                                z
+                        );
+
+                int color =
+                        streamClass == StreamClass.NONE
+                                ? background
+                                : streamClassColor(streamClass);
+
+                image.setRGB(
+                        x,
+                        z,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyStreamInitiationThreshold(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                if (world.landMask(x, z) < 0.5f) {
+                    image.setRGB(
+                            x,
+                            z,
+                            rgb(0, 0, 0)
+                    );
+                    continue;
+                }
+
+                int threshold =
+                        hydrology.streamInitiationThreshold(
+                                x,
+                                z
+                        );
+
+                /*
+                 * Lower initiation thresholds are shown brighter because they
+                 * represent terrain where channels can begin with smaller
+                 * contributing areas.
+                 */
+                double normalized =
+                        1.0
+                                - (threshold - 16.0)
+                                / (96.0 - 16.0);
+
+                int gray =
+                        clamp255(
+                                Math.max(
+                                        0.0,
+                                        Math.min(
+                                                1.0,
+                                                normalized
+                                        )
+                                )
+                                        * 255.0
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        (gray << 16)
+                                | (gray << 8)
+                                | gray
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+
+
+    private static void writeHydrologyRiverGraph(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                if (world.landMask(x, z) < 0.5f) {
+                    image.setRGB(x, z, rgb(0, 0, 0));
+                    continue;
+                }
+
+                int west = Math.max(0, x - 1);
+                int east = Math.min(size - 1, x + 1);
+                int north = Math.max(0, z - 1);
+                int south = Math.min(size - 1, z + 1);
+
+                double dx =
+                        world.elevation(east, z)
+                                - world.elevation(west, z);
+
+                double dz =
+                        world.elevation(x, south)
+                                - world.elevation(x, north);
+
+                int shade =
+                        clamp255(
+                                (0.24
+                                        - dx * 0.0024
+                                        - dz * 0.0024)
+                                        * 255.0
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(shade, shade, shade)
+                );
+            }
+        }
+
+        for (RiverSegment segment : hydrology.riverSegments()) {
+            int color =
+                    segment.type() == RiverSegmentType.LAKE_PASSAGE
+                            ? rgb(70, 95, 255)
+                            : streamClassColor(
+                            segment.maximumStreamClass()
+                    );
+
+            for (int cell : segment.cellPath()) {
+                int x = cell % size;
+                int z = cell / size;
+
+                image.setRGB(
+                        x,
+                        z,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverNodes(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                image.setRGB(
+                        x,
+                        z,
+                        world.landMask(x, z) >= 0.5f
+                                ? rgb(22, 22, 22)
+                                : rgb(0, 0, 0)
+                );
+            }
+        }
+
+        for (RiverNode node : hydrology.riverNodes()) {
+            drawMarker(
+                    image,
+                    node.x(),
+                    node.z(),
+                    riverNodeColor(node.primaryType()),
+                    node.primaryType() == RiverNodeType.CONFLUENCE
+                            || node.primaryType() == RiverNodeType.MOUTH
+                            ? 1
+                            : 0
+            );
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverStrahlerOrder(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                image.setRGB(
+                        x,
+                        z,
+                        world.landMask(x, z) >= 0.5f
+                                ? rgb(18, 18, 18)
+                                : rgb(0, 0, 0)
+                );
+            }
+        }
+
+        for (RiverSegment segment : hydrology.riverSegments()) {
+            RiverSegmentHierarchy hierarchy =
+                    hydrology.riverSegmentHierarchy(
+                            segment.id()
+                    );
+
+            if (hierarchy == null) {
+                continue;
+            }
+
+            int color =
+                    strahlerColor(
+                            hierarchy.strahlerOrder()
+                    );
+
+            for (int cell : segment.cellPath()) {
+                image.setRGB(
+                        cell % size,
+                        cell / size,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverSegmentHierarchy(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                image.setRGB(
+                        x,
+                        z,
+                        world.landMask(x, z) >= 0.5f
+                                ? rgb(12, 12, 12)
+                                : rgb(0, 0, 0)
+                );
+            }
+        }
+
+        int maximumUpstreamSegments =
+                0;
+
+        for (RiverSegmentHierarchy hierarchy : hydrology.riverSegmentHierarchy()) {
+            maximumUpstreamSegments =
+                    Math.max(
+                            maximumUpstreamSegments,
+                            hierarchy.upstreamSegmentCount()
+                    );
+        }
+
+        double logarithmicMaximum =
+                Math.log1p(
+                        Math.max(
+                                1,
+                                maximumUpstreamSegments
+                        )
+                );
+
+        for (RiverSegment segment : hydrology.riverSegments()) {
+            RiverSegmentHierarchy hierarchy =
+                    hydrology.riverSegmentHierarchy(
+                            segment.id()
+                    );
+
+            if (hierarchy == null) {
+                continue;
+            }
+
+            double normalized =
+                    Math.log1p(
+                            hierarchy.upstreamSegmentCount()
+                    )
+                            / logarithmicMaximum;
+
+            int red =
+                    clamp255(
+                            35.0 + normalized * 220.0
+                    );
+
+            int green =
+                    clamp255(
+                            115.0 + normalized * 105.0
+                    );
+
+            int blue =
+                    clamp255(
+                            220.0 - normalized * 180.0
+                    );
+
+            int color =
+                    rgb(
+                            red,
+                            green,
+                            blue
+                    );
+
+            for (int cell : segment.cellPath()) {
+                image.setRGB(
+                        cell % size,
+                        cell / size,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverMagnitude(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                hydrologyDiagnosticBase(
+                        world,
+                        12
+                );
+
+        for (RiverSegment segment : hydrology.riverSegments()) {
+            RiverSegmentMagnitude magnitude =
+                    hydrology.riverSegmentMagnitude(
+                            segment.id()
+                    );
+
+            if (magnitude == null) {
+                continue;
+            }
+
+            double value =
+                    clamp01(
+                            magnitude.potentialMagnitude()
+                    );
+
+            int color =
+                    heatColor(value);
+
+            for (int cell : segment.cellPath()) {
+                image.setRGB(
+                        cell % size,
+                        cell / size,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverWidth(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                hydrologyDiagnosticBase(
+                        world,
+                        12
+                );
+
+        for (RiverSegment segment : hydrology.riverSegments()) {
+            RiverSegmentMagnitude magnitude =
+                    hydrology.riverSegmentMagnitude(
+                            segment.id()
+                    );
+
+            if (magnitude == null) {
+                continue;
+            }
+
+            int color =
+                    riverScaleColor(
+                            magnitude.riverScale()
+                    );
+
+            for (int cell : segment.cellPath()) {
+                image.setRGB(
+                        cell % size,
+                        cell / size,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverSlope(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                hydrologyDiagnosticBase(
+                        world,
+                        12
+                );
+
+        double maximumSlope =
+                0.0;
+
+        for (RiverSegmentMagnitude magnitude : hydrology.riverSegmentMagnitudes()) {
+            maximumSlope =
+                    Math.max(
+                            maximumSlope,
+                            magnitude.channelSlope()
+                    );
+        }
+
+        double logarithmicMaximum =
+                Math.log1p(
+                        maximumSlope / 0.001
+                );
+
+        for (RiverSegment segment : hydrology.riverSegments()) {
+            RiverSegmentMagnitude magnitude =
+                    hydrology.riverSegmentMagnitude(
+                            segment.id()
+                    );
+
+            if (magnitude == null) {
+                continue;
+            }
+
+            double normalized =
+                    logarithmicMaximum > 0.0
+                            ? Math.log1p(
+                            magnitude.channelSlope() / 0.001
+                    ) / logarithmicMaximum
+                            : 0.0;
+
+            int color =
+                    heatColor(
+                            clamp01(normalized)
+                    );
+
+            for (int cell : segment.cellPath()) {
+                image.setRGB(
+                        cell % size,
+                        cell / size,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverSmoothedWidth(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                hydrologyDiagnosticBase(
+                        world,
+                        12
+                );
+
+        double maximumWidth =
+                Math.max(
+                        1.0,
+                        hydrology.maximumSmoothedRiverWidthBlocks()
+                );
+
+        double logarithmicMaximum =
+                Math.log1p(maximumWidth);
+
+        for (RiverSegment segment : hydrology.riverSegments()) {
+            RiverSegmentProfile profile =
+                    hydrology.riverSegmentProfile(
+                            segment.id()
+                    );
+
+            if (profile == null) {
+                continue;
+            }
+
+            double normalized =
+                    Math.log1p(
+                            profile.averageSmoothedWidthBlocks()
+                    ) / logarithmicMaximum;
+
+            normalized =
+                    clamp01(normalized);
+
+            int color =
+                    rgb(
+                            clamp255(18.0 + 30.0 * normalized),
+                            clamp255(72.0 + 112.0 * normalized),
+                            clamp255(120.0 + 135.0 * normalized)
+                    );
+
+            for (int cell : segment.cellPath()) {
+                image.setRGB(
+                        cell % size,
+                        cell / size,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverContinuity(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                hydrologyDiagnosticBase(
+                        world,
+                        12
+                );
+
+        for (RiverSegment segment : hydrology.riverSegments()) {
+            RiverSegmentProfile profile =
+                    hydrology.riverSegmentProfile(
+                            segment.id()
+                    );
+
+            if (profile == null) {
+                continue;
+            }
+
+            /*
+             * 0.50 means the 2F solver moved at least one end of the segment
+             * by fifty percent relative to the raw 2E width. Values above
+             * that remain clamped red so unusual corrections stand out.
+             */
+            double normalized =
+                    clamp01(
+                            profile.widthAdjustmentFraction()
+                                    / 0.50
+                    );
+
+            int color =
+                    profile.endElevation()
+                            > profile.startElevation() + 1.0e-6
+                            ? rgb(230, 60, 210)
+                            : continuityColor(normalized);
+
+            for (int cell : segment.cellPath()) {
+                image.setRGB(
+                        cell % size,
+                        cell / size,
+                        color
+                );
+            }
+
+            double rawRatio =
+                    profile.rawStartWidthRatio();
+
+            if (rawRatio > 1.80 || rawRatio < 0.55) {
+                RiverNode startNode =
+                        hydrology.riverNodes()
+                                .get(segment.startNodeId());
+
+                if (
+                        startNode.x() >= 0
+                                && startNode.x() < size
+                                && startNode.z() >= 0
+                                && startNode.z() < size
+                ) {
+                    image.setRGB(
+                            startNode.x(),
+                            startNode.z(),
+                            0xFFFFFF
+                    );
+                }
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverLongitudinalProfiles(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        int width = 1200;
+        int height = 720;
+
+        BufferedImage image =
+                new BufferedImage(
+                        width,
+                        height,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        Graphics2D graphics =
+                image.createGraphics();
+
+        graphics.setRenderingHint(
+                RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON
+        );
+
+        graphics.setColor(
+                new Color(12, 14, 18)
+        );
+
+        graphics.fillRect(
+                0,
+                0,
+                width,
+                height
+        );
+
+        List<ProfileSeries> series =
+                buildLargestRiverProfileSeries(
+                        hydrology,
+                        8
+                );
+
+        if (series.isEmpty()) {
+            graphics.dispose();
+
+            ImageIO.write(
+                    image,
+                    "PNG",
+                    path.toFile()
+            );
+            return;
+        }
+
+        double maximumDistance =
+                1.0;
+
+        double minimumElevation =
+                Double.POSITIVE_INFINITY;
+
+        double maximumElevation =
+                Double.NEGATIVE_INFINITY;
+
+        for (ProfileSeries profileSeries : series) {
+            if (!profileSeries.points().isEmpty()) {
+                maximumDistance =
+                        Math.max(
+                                maximumDistance,
+                                profileSeries.points()
+                                        .getLast()
+                                        .distanceBlocks()
+                        );
+            }
+
+            for (ProfilePoint point : profileSeries.points()) {
+                minimumElevation =
+                        Math.min(
+                                minimumElevation,
+                                point.elevation()
+                        );
+
+                maximumElevation =
+                        Math.max(
+                                maximumElevation,
+                                point.elevation()
+                        );
+            }
+        }
+
+        if (!Double.isFinite(minimumElevation)) {
+            minimumElevation = 0.0;
+            maximumElevation = 1.0;
+        }
+
+        if (maximumElevation - minimumElevation < 1.0) {
+            maximumElevation =
+                    minimumElevation + 1.0;
+        }
+
+        int left = 78;
+        int right = 28;
+        int top = 48;
+        int bottom = 64;
+
+        int plotWidth =
+                width - left - right;
+
+        int plotHeight =
+                height - top - bottom;
+
+        graphics.setFont(
+                new Font(
+                        Font.SANS_SERIF,
+                        Font.PLAIN,
+                        14
+                )
+        );
+
+        graphics.setStroke(
+                new BasicStroke(1.0f)
+        );
+
+        for (int i = 0; i <= 5; i++) {
+            double t =
+                    i / 5.0;
+
+            int y =
+                    top
+                            + (int) Math.round(
+                            plotHeight * t
+                    );
+
+            graphics.setColor(
+                    new Color(42, 46, 54)
+            );
+
+            graphics.drawLine(
+                    left,
+                    y,
+                    left + plotWidth,
+                    y
+            );
+
+            double elevation =
+                    maximumElevation
+                            - t
+                            * (maximumElevation - minimumElevation);
+
+            graphics.setColor(
+                    new Color(190, 196, 205)
+            );
+
+            graphics.drawString(
+                    String.format("%.0f", elevation),
+                    18,
+                    y + 5
+            );
+        }
+
+        for (int i = 0; i <= 5; i++) {
+            double t =
+                    i / 5.0;
+
+            int x =
+                    left
+                            + (int) Math.round(
+                            plotWidth * t
+                    );
+
+            graphics.setColor(
+                    new Color(34, 38, 45)
+            );
+
+            graphics.drawLine(
+                    x,
+                    top,
+                    x,
+                    top + plotHeight
+            );
+
+            graphics.setColor(
+                    new Color(190, 196, 205)
+            );
+
+            graphics.drawString(
+                    String.format("%.0f km", maximumDistance * t / 1000.0),
+                    x - 18,
+                    top + plotHeight + 26
+            );
+        }
+
+        Color[] colors =
+                new Color[]{
+                        new Color(86, 180, 233),
+                        new Color(230, 159, 0),
+                        new Color(0, 158, 115),
+                        new Color(204, 121, 167),
+                        new Color(240, 228, 66),
+                        new Color(0, 114, 178),
+                        new Color(213, 94, 0),
+                        new Color(120, 120, 230)
+                };
+
+        for (int seriesIndex = 0;
+             seriesIndex < series.size();
+             seriesIndex++) {
+
+            ProfileSeries profileSeries =
+                    series.get(seriesIndex);
+
+            List<ProfilePoint> points =
+                    profileSeries.points();
+
+            if (points.size() < 2) {
+                continue;
+            }
+
+            graphics.setColor(
+                    colors[seriesIndex % colors.length]
+            );
+
+            graphics.setStroke(
+                    new BasicStroke(2.2f)
+            );
+
+            int previousX = -1;
+            int previousY = -1;
+
+            for (ProfilePoint point : points) {
+                int x =
+                        left
+                                + (int) Math.round(
+                                point.distanceBlocks()
+                                        / maximumDistance
+                                        * plotWidth
+                        );
+
+                int y =
+                        top
+                                + (int) Math.round(
+                                (
+                                        maximumElevation
+                                                - point.elevation()
+                                )
+                                        / (
+                                        maximumElevation
+                                                - minimumElevation
+                                )
+                                        * plotHeight
+                        );
+
+                if (previousX >= 0) {
+                    graphics.drawLine(
+                            previousX,
+                            previousY,
+                            x,
+                            y
+                    );
+                }
+
+                previousX = x;
+                previousY = y;
+            }
+
+            graphics.drawString(
+                    "A="
+                            + profileSeries.mouthAccumulation(),
+                    Math.min(
+                            width - 110,
+                            previousX + 5
+                    ),
+                    Math.max(
+                            top + 14,
+                            previousY - 4
+                    )
+            );
+        }
+
+        graphics.setColor(
+                new Color(220, 224, 230)
+        );
+
+        graphics.setFont(
+                new Font(
+                        Font.SANS_SERIF,
+                        Font.BOLD,
+                        18
+                )
+        );
+
+        graphics.drawString(
+                "Largest river main-stem longitudinal profiles",
+                left,
+                28
+        );
+
+        graphics.setFont(
+                new Font(
+                        Font.SANS_SERIF,
+                        Font.PLAIN,
+                        14
+                )
+        );
+
+        graphics.drawString(
+                "distance from selected main-stem source",
+                left + plotWidth / 2 - 110,
+                height - 16
+        );
+
+        graphics.rotate(
+                -Math.PI / 2.0
+        );
+
+        graphics.drawString(
+                "elevation",
+                -top - plotHeight / 2 - 28,
+                18
+        );
+
+        graphics.rotate(
+                Math.PI / 2.0
+        );
+
+        graphics.dispose();
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverPlannedGrade(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                hydrologyDiagnosticBase(
+                        world,
+                        12
+                );
+
+        double maximumGrade =
+                Math.max(
+                        1.0e-6,
+                        hydrology.maximumPlannedRiverGrade()
+                );
+
+        double logarithmicMaximum =
+                Math.log1p(
+                        maximumGrade * 1000.0
+                );
+
+        for (RiverSegment segment : hydrology.riverSegments()) {
+            RiverSegmentGradePlan plan =
+                    hydrology.riverSegmentGradePlan(
+                            segment.id()
+                    );
+
+            if (plan == null) {
+                continue;
+            }
+
+            if (plan.lakePassage()) {
+                for (int cell : segment.cellPath()) {
+                    image.setRGB(
+                            cell % size,
+                            cell / size,
+                            rgb(35, 82, 150)
+                    );
+                }
+                continue;
+            }
+
+            double normalized =
+                    logarithmicMaximum > 0.0
+                            ? Math.log1p(
+                            plan.averagePlannedGrade()
+                                    * 1000.0
+                    ) / logarithmicMaximum
+                            : 0.0;
+
+            normalized =
+                    clamp01(normalized);
+
+            int color;
+
+            if (normalized < 0.5) {
+                double t =
+                        normalized / 0.5;
+
+                color =
+                        rgb(
+                                clamp255(25.0 + 20.0 * t),
+                                clamp255(95.0 + 120.0 * t),
+                                clamp255(180.0 + 50.0 * t)
+                        );
+            } else {
+                double t =
+                        (normalized - 0.5) / 0.5;
+
+                color =
+                        rgb(
+                                clamp255(45.0 + 210.0 * t),
+                                clamp255(215.0 - 60.0 * t),
+                                clamp255(230.0 - 205.0 * t)
+                        );
+            }
+
+            for (int cell : segment.cellPath()) {
+                image.setRGB(
+                        cell % size,
+                        cell / size,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverGradeCorrection(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                hydrologyDiagnosticBase(
+                        world,
+                        10
+                );
+
+        for (RiverSegment segment : hydrology.riverSegments()) {
+            RiverSegmentGradePlan plan =
+                    hydrology.riverSegmentGradePlan(
+                            segment.id()
+                    );
+
+            if (
+                    plan == null
+                            || plan.lakePassage()
+            ) {
+                continue;
+            }
+
+            int sampleCount =
+                    Math.min(
+                            plan.sampleCount(),
+                            segment.cellPath().size()
+                    );
+
+            for (int i = 0; i < sampleCount; i++) {
+                double correction =
+                        plan.gradeCorrectionAt(i);
+
+                int color;
+
+                if (correction < 0.05) {
+                    color =
+                            rgb(28, 120, 70);
+                } else if (correction < 4.0) {
+                    double t =
+                            correction / 4.0;
+
+                    color =
+                            rgb(
+                                    clamp255(45.0 + 185.0 * t),
+                                    clamp255(155.0 + 65.0 * t),
+                                    45
+                            );
+                } else if (correction < 16.0) {
+                    double t =
+                            (correction - 4.0) / 12.0;
+
+                    color =
+                            rgb(
+                                    240,
+                                    clamp255(220.0 - 175.0 * t),
+                                    clamp255(45.0 - 20.0 * t)
+                            );
+                } else {
+                    color =
+                            0xFFFFFF;
+                }
+
+                int cell =
+                        segment.cellPath().get(i);
+
+                image.setRGB(
+                        cell % size,
+                        cell / size,
+                        color
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverLongitudinalProfilesCorrected(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        int width = 1200;
+        int height = 720;
+
+        BufferedImage image =
+                new BufferedImage(
+                        width,
+                        height,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        Graphics2D graphics =
+                image.createGraphics();
+
+        graphics.setRenderingHint(
+                RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON
+        );
+
+        graphics.setColor(
+                new Color(12, 14, 18)
+        );
+
+        graphics.fillRect(
+                0,
+                0,
+                width,
+                height
+        );
+
+        List<CorrectedProfileSeries> series =
+                buildLargestCorrectedRiverProfileSeries(
+                        hydrology,
+                        6
+                );
+
+        if (series.isEmpty()) {
+            graphics.dispose();
+            ImageIO.write(image, "PNG", path.toFile());
+            return;
+        }
+
+        double maximumDistance =
+                1.0;
+
+        double minimumElevation =
+                Double.POSITIVE_INFINITY;
+
+        double maximumElevation =
+                Double.NEGATIVE_INFINITY;
+
+        for (CorrectedProfileSeries profileSeries : series) {
+            for (CorrectedProfilePoint point : profileSeries.points()) {
+                maximumDistance =
+                        Math.max(
+                                maximumDistance,
+                                point.distanceBlocks()
+                        );
+
+                minimumElevation =
+                        Math.min(
+                                minimumElevation,
+                                Math.min(
+                                        point.terrainElevation(),
+                                        point.plannedBedElevation()
+                                )
+                        );
+
+                maximumElevation =
+                        Math.max(
+                                maximumElevation,
+                                Math.max(
+                                        point.terrainElevation(),
+                                        point.plannedBedElevation()
+                                )
+                        );
+            }
+        }
+
+        if (!Double.isFinite(minimumElevation)) {
+            minimumElevation = 0.0;
+            maximumElevation = 1.0;
+        }
+
+        if (maximumElevation - minimumElevation < 1.0) {
+            maximumElevation =
+                    minimumElevation + 1.0;
+        }
+
+        int left = 78;
+        int right = 28;
+        int top = 48;
+        int bottom = 64;
+
+        int plotWidth =
+                width - left - right;
+
+        int plotHeight =
+                height - top - bottom;
+
+        graphics.setFont(
+                new Font(
+                        Font.SANS_SERIF,
+                        Font.PLAIN,
+                        14
+                )
+        );
+
+        for (int i = 0; i <= 5; i++) {
+            double t =
+                    i / 5.0;
+
+            int y =
+                    top
+                            + (int) Math.round(
+                            plotHeight * t
+                    );
+
+            graphics.setColor(
+                    new Color(42, 46, 54)
+            );
+
+            graphics.setStroke(
+                    new BasicStroke(1.0f)
+            );
+
+            graphics.drawLine(
+                    left,
+                    y,
+                    left + plotWidth,
+                    y
+            );
+
+            double elevation =
+                    maximumElevation
+                            - t
+                            * (maximumElevation - minimumElevation);
+
+            graphics.setColor(
+                    new Color(190, 196, 205)
+            );
+
+            graphics.drawString(
+                    String.format("%.0f", elevation),
+                    18,
+                    y + 5
+            );
+        }
+
+        for (int i = 0; i <= 5; i++) {
+            double t =
+                    i / 5.0;
+
+            int x =
+                    left
+                            + (int) Math.round(
+                            plotWidth * t
+                    );
+
+            graphics.setColor(
+                    new Color(34, 38, 45)
+            );
+
+            graphics.drawLine(
+                    x,
+                    top,
+                    x,
+                    top + plotHeight
+            );
+
+            graphics.setColor(
+                    new Color(190, 196, 205)
+            );
+
+            graphics.drawString(
+                    String.format("%.0f km", maximumDistance * t / 1000.0),
+                    x - 18,
+                    top + plotHeight + 26
+            );
+        }
+
+        Color[] colors =
+                new Color[]{
+                        new Color(86, 180, 233),
+                        new Color(230, 159, 0),
+                        new Color(0, 158, 115),
+                        new Color(204, 121, 167),
+                        new Color(240, 228, 66),
+                        new Color(213, 94, 0)
+                };
+
+        for (int seriesIndex = 0;
+             seriesIndex < series.size();
+             seriesIndex++) {
+
+            CorrectedProfileSeries profileSeries =
+                    series.get(seriesIndex);
+
+            List<CorrectedProfilePoint> points =
+                    profileSeries.points();
+
+            if (points.size() < 2) {
+                continue;
+            }
+
+            Color color =
+                    colors[seriesIndex % colors.length];
+
+            drawCorrectedProfileLine(
+                    graphics,
+                    points,
+                    maximumDistance,
+                    minimumElevation,
+                    maximumElevation,
+                    left,
+                    top,
+                    plotWidth,
+                    plotHeight,
+                    new Color(
+                            color.getRed(),
+                            color.getGreen(),
+                            color.getBlue(),
+                            75
+                    ),
+                    1.2f,
+                    true
+            );
+
+            drawCorrectedProfileLine(
+                    graphics,
+                    points,
+                    maximumDistance,
+                    minimumElevation,
+                    maximumElevation,
+                    left,
+                    top,
+                    plotWidth,
+                    plotHeight,
+                    color,
+                    2.4f,
+                    false
+            );
+        }
+
+        graphics.setColor(
+                new Color(220, 224, 230)
+        );
+
+        graphics.setFont(
+                new Font(
+                        Font.SANS_SERIF,
+                        Font.BOLD,
+                        18
+                )
+        );
+
+        graphics.drawString(
+                "Largest river profiles: terrain (faint) vs planned bed",
+                left,
+                28
+        );
+
+        graphics.setFont(
+                new Font(
+                        Font.SANS_SERIF,
+                        Font.PLAIN,
+                        14
+                )
+        );
+
+        graphics.drawString(
+                "distance from selected main-stem source",
+                left + plotWidth / 2 - 110,
+                height - 16
+        );
+
+        graphics.dispose();
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void drawCorrectedProfileLine(
+            Graphics2D graphics,
+            List<CorrectedProfilePoint> points,
+            double maximumDistance,
+            double minimumElevation,
+            double maximumElevation,
+            int left,
+            int top,
+            int plotWidth,
+            int plotHeight,
+            Color color,
+            float strokeWidth,
+            boolean terrainLine
+    ) {
+        graphics.setColor(color);
+        graphics.setStroke(new BasicStroke(strokeWidth));
+
+        int previousX = -1;
+        int previousY = -1;
+
+        for (CorrectedProfilePoint point : points) {
+            if (point.breakBefore()) {
+                previousX = -1;
+                previousY = -1;
+            }
+
+            double elevation =
+                    terrainLine
+                            ? point.terrainElevation()
+                            : point.plannedBedElevation();
+
+            int x =
+                    left
+                            + (int) Math.round(
+                            point.distanceBlocks()
+                                    / maximumDistance
+                                    * plotWidth
+                    );
+
+            int y =
+                    top
+                            + (int) Math.round(
+                            (
+                                    maximumElevation
+                                            - elevation
+                            )
+                                    / (
+                                    maximumElevation
+                                            - minimumElevation
+                            )
+                                    * plotHeight
+                    );
+
+            if (previousX >= 0) {
+                graphics.drawLine(
+                        previousX,
+                        previousY,
+                        x,
+                        y
+                );
+            }
+
+            previousX = x;
+            previousY = y;
+        }
+    }
+
+
+    private static List<CorrectedProfileSeries> buildLargestCorrectedRiverProfileSeries(
+            HydrologyGrid hydrology,
+            int maximumSeries
+    ) {
+        List<RiverSegment> mouthSegments =
+                new ArrayList<>();
+
+        for (RiverSegment segment : hydrology.riverSegments()) {
+            RiverNode endNode =
+                    hydrology.riverNodes()
+                            .get(segment.endNodeId());
+
+            if (endNode.mouth()) {
+                mouthSegments.add(segment);
+            }
+        }
+
+        mouthSegments.sort(
+                Comparator.comparingLong(
+                                RiverSegment::endAccumulation
+                        )
+                        .reversed()
+        );
+
+        List<CorrectedProfileSeries> result =
+                new ArrayList<>();
+
+        for (RiverSegment mouthSegment : mouthSegments) {
+            if (result.size() >= maximumSeries) {
+                break;
+            }
+
+            List<Integer> chain =
+                    traceMainStemUpstream(
+                            hydrology,
+                            mouthSegment.id()
+                    );
+
+            if (chain.isEmpty()) {
+                continue;
+            }
+
+            List<CorrectedProfilePoint> points =
+                    new ArrayList<>();
+
+            double distance =
+                    0.0;
+
+            boolean breakBeforeNext =
+                    false;
+
+            for (int segmentId : chain) {
+                RiverSegment segment =
+                        hydrology.riverSegments()
+                                .get(segmentId);
+
+                RiverSegmentGradePlan plan =
+                        hydrology.riverSegmentGradePlan(
+                                segmentId
+                        );
+
+                if (
+                        plan == null
+                                || plan.lakePassage()
+                                || plan.sampleCount() <= 0
+                ) {
+                    distance +=
+                            segment.lengthBlocks();
+
+                    breakBeforeNext =
+                            true;
+                    continue;
+                }
+
+                int sampleCount =
+                        plan.sampleCount();
+
+                for (int i = 0; i < sampleCount; i++) {
+                    if (
+                            i == 0
+                                    && !points.isEmpty()
+                                    && !breakBeforeNext
+                    ) {
+                        continue;
+                    }
+
+                    double localDistance =
+                            sampleCount <= 1
+                                    ? 0.0
+                                    : segment.lengthBlocks()
+                                    * i
+                                    / (double) (sampleCount - 1);
+
+                    points.add(
+                            new CorrectedProfilePoint(
+                                    distance + localDistance,
+                                    plan.terrainElevationAt(i),
+                                    plan.plannedBedElevationAt(i),
+                                    breakBeforeNext && i == 0
+                            )
+                    );
+                }
+
+                distance +=
+                        segment.lengthBlocks();
+
+                breakBeforeNext =
+                        false;
+            }
+
+            if (points.size() >= 2) {
+                result.add(
+                        new CorrectedProfileSeries(
+                                List.copyOf(points),
+                                mouthSegment.endAccumulation()
+                        )
+                );
+            }
+        }
+
+        return List.copyOf(result);
+    }
+
+
+    private static List<ProfileSeries> buildLargestRiverProfileSeries(
+            HydrologyGrid hydrology,
+            int maximumSeries
+    ) {
+        List<RiverSegment> mouthSegments =
+                new ArrayList<>();
+
+        for (RiverSegment segment : hydrology.riverSegments()) {
+            RiverNode endNode =
+                    hydrology.riverNodes()
+                            .get(segment.endNodeId());
+
+            if (endNode.mouth()) {
+                mouthSegments.add(segment);
+            }
+        }
+
+        mouthSegments.sort(
+                Comparator.comparingLong(
+                                RiverSegment::endAccumulation
+                        )
+                        .reversed()
+        );
+
+        List<ProfileSeries> result =
+                new ArrayList<>();
+
+        for (int mouthIndex = 0;
+             mouthIndex < mouthSegments.size()
+                     && result.size() < maximumSeries;
+             mouthIndex++) {
+
+            RiverSegment mouthSegment =
+                    mouthSegments.get(mouthIndex);
+
+            List<Integer> chain =
+                    traceMainStemUpstream(
+                            hydrology,
+                            mouthSegment.id()
+                    );
+
+            if (chain.isEmpty()) {
+                continue;
+            }
+
+            List<ProfilePoint> points =
+                    new ArrayList<>();
+
+            double distance =
+                    0.0;
+
+            RiverSegment first =
+                    hydrology.riverSegments()
+                            .get(chain.getFirst());
+
+            RiverNode firstStart =
+                    hydrology.riverNodes()
+                            .get(first.startNodeId());
+
+            points.add(
+                    new ProfilePoint(
+                            0.0,
+                            firstStart.elevation()
+                    )
+            );
+
+            for (int segmentId : chain) {
+                RiverSegment segment =
+                        hydrology.riverSegments()
+                                .get(segmentId);
+
+                distance +=
+                        segment.lengthBlocks();
+
+                RiverNode endNode =
+                        hydrology.riverNodes()
+                                .get(segment.endNodeId());
+
+                points.add(
+                        new ProfilePoint(
+                                distance,
+                                endNode.elevation()
+                        )
+                );
+            }
+
+            result.add(
+                    new ProfileSeries(
+                            List.copyOf(points),
+                            mouthSegment.endAccumulation()
+                    )
+            );
+        }
+
+        return List.copyOf(result);
+    }
+
+
+    private static List<Integer> traceMainStemUpstream(
+            HydrologyGrid hydrology,
+            int mouthSegmentId
+    ) {
+        List<Integer> reverse =
+                new ArrayList<>();
+
+        int currentSegmentId =
+                mouthSegmentId;
+
+        while (currentSegmentId >= 0) {
+            reverse.add(currentSegmentId);
+
+            RiverSegmentHierarchy hierarchy =
+                    hydrology.riverSegmentHierarchy(
+                            currentSegmentId
+                    );
+
+            if (
+                    hierarchy == null
+                            || hierarchy.upstreamSegmentIds().isEmpty()
+            ) {
+                break;
+            }
+
+            int bestUpstream =
+                    -1;
+
+            double bestDistance =
+                    -1.0;
+
+            long bestAccumulation =
+                    -1L;
+
+            for (int upstreamId : hierarchy.upstreamSegmentIds()) {
+                RiverSegmentHierarchy upstreamHierarchy =
+                        hydrology.riverSegmentHierarchy(
+                                upstreamId
+                        );
+
+                RiverSegment upstreamSegment =
+                        hydrology.riverSegments()
+                                .get(upstreamId);
+
+                double sourceDistance =
+                        upstreamHierarchy != null
+                                ? upstreamHierarchy.longestSourceDistanceBlocks()
+                                : 0.0;
+
+                long accumulation =
+                        upstreamSegment.endAccumulation();
+
+                if (
+                        sourceDistance > bestDistance
+                                || (
+                                sourceDistance == bestDistance
+                                        && accumulation > bestAccumulation
+                        )
+                ) {
+                    bestUpstream =
+                            upstreamId;
+
+                    bestDistance =
+                            sourceDistance;
+
+                    bestAccumulation =
+                            accumulation;
+                }
+            }
+
+            currentSegmentId =
+                    bestUpstream;
+        }
+
+        Collections.reverse(reverse);
+
+        return reverse;
+    }
+
+
+    private static void writeHydrologyRiverCenterlines(
+            WorldBlueprint world,
+            Path path,
+            boolean reliefBackground
+    ) throws IOException {
+        final int previewSize =
+                2048;
+
+        BufferedImage image =
+                new BufferedImage(
+                        previewSize,
+                        previewSize,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        Graphics2D graphics =
+                image.createGraphics();
+
+        graphics.setRenderingHint(
+                RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON
+        );
+
+        graphics.setRenderingHint(
+                RenderingHints.KEY_RENDERING,
+                RenderingHints.VALUE_RENDER_QUALITY
+        );
+
+        if (reliefBackground) {
+            BufferedImage base =
+                    hydrologyReliefBase(world);
+
+            graphics.setRenderingHint(
+                    RenderingHints.KEY_INTERPOLATION,
+                    RenderingHints.VALUE_INTERPOLATION_BILINEAR
+            );
+
+            graphics.drawImage(
+                    base,
+                    0,
+                    0,
+                    previewSize,
+                    previewSize,
+                    null
+            );
+        } else {
+            graphics.setColor(
+                    new Color(5, 7, 10)
+            );
+
+            graphics.fillRect(
+                    0,
+                    0,
+                    previewSize,
+                    previewSize
+            );
+        }
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        for (RiverSegmentCenterline centerline : hydrology.riverSegmentCenterlines()) {
+            if (
+                    centerline.lakePassage()
+                            || centerline.points().size() < 2
+            ) {
+                continue;
+            }
+
+            RiverSegmentMagnitude magnitude =
+                    hydrology.riverSegmentMagnitude(
+                            centerline.segmentId()
+                    );
+
+            RiverSegmentProfile profile =
+                    hydrology.riverSegmentProfile(
+                            centerline.segmentId()
+                    );
+
+            int rgb =
+                    magnitude != null
+                            ? riverScaleColor(
+                            magnitude.riverScale()
+                    )
+                            : rgb(55, 185, 235);
+
+            Color color =
+                    new Color(
+                            (rgb >> 16) & 0xFF,
+                            (rgb >> 8) & 0xFF,
+                            rgb & 0xFF,
+                            reliefBackground
+                                    ? 230
+                                    : 255
+                    );
+
+            double averageWidth =
+                    profile != null
+                            ? profile.averageSmoothedWidthBlocks()
+                            : 3.0;
+
+            float strokeWidth =
+                    (float) Math.max(
+                            0.75,
+                            Math.min(
+                                    4.0,
+                                    averageWidth
+                                            / world.config().worldSizeBlocks()
+                                            * previewSize
+                                            * 0.95
+                            )
+                    );
+
+            graphics.setStroke(
+                    new BasicStroke(
+                            strokeWidth,
+                            BasicStroke.CAP_ROUND,
+                            BasicStroke.JOIN_ROUND
+                    )
+            );
+
+            graphics.setColor(color);
+
+            Path2D.Double riverPath =
+                    new Path2D.Double();
+
+            RiverCenterlinePoint first =
+                    centerline.points().getFirst();
+
+            riverPath.moveTo(
+                    blockToPreviewPixel(
+                            world,
+                            first.blockX(),
+                            previewSize
+                    ),
+                    blockToPreviewPixel(
+                            world,
+                            first.blockZ(),
+                            previewSize
+                    )
+            );
+
+            for (int i = 1; i < centerline.points().size(); i++) {
+                RiverCenterlinePoint point =
+                        centerline.points().get(i);
+
+                riverPath.lineTo(
+                        blockToPreviewPixel(
+                                world,
+                                point.blockX(),
+                                previewSize
+                        ),
+                        blockToPreviewPixel(
+                                world,
+                                point.blockZ(),
+                                previewSize
+                        )
+                );
+            }
+
+            graphics.draw(riverPath);
+        }
+
+        graphics.dispose();
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverCenterlineOffset(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        final int previewSize =
+                2048;
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        BufferedImage image =
+                new BufferedImage(
+                        previewSize,
+                        previewSize,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        Graphics2D graphics =
+                image.createGraphics();
+
+        graphics.setColor(
+                new Color(4, 5, 8)
+        );
+
+        graphics.fillRect(
+                0,
+                0,
+                previewSize,
+                previewSize
+        );
+
+        graphics.setRenderingHint(
+                RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON
+        );
+
+        /*
+         * Draw the original D8 macro graph underneath so this diagnostic
+         * directly shows how Pass 2G departs from the 64-block grid route.
+         */
+        graphics.setStroke(
+                new BasicStroke(
+                        0.8f,
+                        BasicStroke.CAP_ROUND,
+                        BasicStroke.JOIN_ROUND
+                )
+        );
+
+        graphics.setColor(
+                new Color(58, 58, 64)
+        );
+
+        for (RiverSegment segment : hydrology.riverSegments()) {
+            if (
+                    segment.type() == RiverSegmentType.LAKE_PASSAGE
+                            || segment.cellPath().size() < 2
+            ) {
+                continue;
+            }
+
+            Path2D.Double macroPath =
+                    new Path2D.Double();
+
+            boolean started =
+                    false;
+
+            for (int cell : segment.cellPath()) {
+                int x =
+                        cell % world.resolution();
+
+                int z =
+                        cell / world.resolution();
+
+                double blockX =
+                        macroGridBlockCoordinate(
+                                world,
+                                x
+                        );
+
+                double blockZ =
+                        macroGridBlockCoordinate(
+                                world,
+                                z
+                        );
+
+                double px =
+                        blockToPreviewPixel(
+                                world,
+                                blockX,
+                                previewSize
+                        );
+
+                double pz =
+                        blockToPreviewPixel(
+                                world,
+                                blockZ,
+                                previewSize
+                        );
+
+                if (!started) {
+                    macroPath.moveTo(
+                            px,
+                            pz
+                    );
+                    started = true;
+                } else {
+                    macroPath.lineTo(
+                            px,
+                            pz
+                    );
+                }
+            }
+
+            graphics.draw(macroPath);
+        }
+
+        double normalization =
+                Math.max(
+                        1.0,
+                        hydrology.blocksPerCell()
+                                * 0.62
+                );
+
+        graphics.setStroke(
+                new BasicStroke(
+                        1.15f,
+                        BasicStroke.CAP_ROUND,
+                        BasicStroke.JOIN_ROUND
+                )
+        );
+
+        for (RiverSegmentCenterline centerline : hydrology.riverSegmentCenterlines()) {
+            if (
+                    centerline.lakePassage()
+                            || centerline.points().size() < 2
+            ) {
+                continue;
+            }
+
+            List<RiverCenterlinePoint> points =
+                    centerline.points();
+
+            for (int i = 1; i < points.size(); i++) {
+                RiverCenterlinePoint a =
+                        points.get(i - 1);
+
+                RiverCenterlinePoint b =
+                        points.get(i);
+
+                double normalizedOffset =
+                        Math.max(
+                                Math.abs(
+                                        a.lateralOffsetBlocks()
+                                ),
+                                Math.abs(
+                                        b.lateralOffsetBlocks()
+                                )
+                        ) / normalization;
+
+                graphics.setColor(
+                        new Color(
+                                centerlineOffsetColor(
+                                        normalizedOffset
+                                )
+                        )
+                );
+
+                graphics.drawLine(
+                        (int) Math.round(
+                                blockToPreviewPixel(
+                                        world,
+                                        a.blockX(),
+                                        previewSize
+                                )
+                        ),
+                        (int) Math.round(
+                                blockToPreviewPixel(
+                                        world,
+                                        a.blockZ(),
+                                        previewSize
+                                )
+                        ),
+                        (int) Math.round(
+                                blockToPreviewPixel(
+                                        world,
+                                        b.blockX(),
+                                        previewSize
+                                )
+                        ),
+                        (int) Math.round(
+                                blockToPreviewPixel(
+                                        world,
+                                        b.blockZ(),
+                                        previewSize
+                                )
+                        )
+                );
+            }
+        }
+
+        graphics.dispose();
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverCenterlineDetail(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        final int previewSize =
+                1024;
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        RiverSegmentCenterline selected =
+                null;
+
+        double bestScore =
+                -1.0;
+
+        for (RiverSegmentCenterline centerline : hydrology.riverSegmentCenterlines()) {
+            if (
+                    centerline.lakePassage()
+                            || centerline.points().size() < 3
+            ) {
+                continue;
+            }
+
+            RiverSegmentProfile profile =
+                    hydrology.riverSegmentProfile(
+                            centerline.segmentId()
+                    );
+
+            double width =
+                    profile != null
+                            ? profile.averageSmoothedWidthBlocks()
+                            : 1.0;
+
+            /*
+             * Pick a segment where the synthesized geometry is visually
+             * informative rather than simply selecting the longest straight
+             * trunk in the world.
+             */
+            double score =
+                    2_500.0
+                            * Math.max(
+                            0.0,
+                            centerline.sinuosityRatio() - 1.0
+                    )
+                            + 8.0
+                            * centerline.maximumLateralOffsetBlocks()
+                            + 0.05
+                            * centerline.centerlineLengthBlocks()
+                            + 4.0
+                            * Math.sqrt(
+                            Math.max(
+                                    1.0,
+                                    width
+                            )
+                    );
+
+            if (score > bestScore) {
+                bestScore = score;
+                selected = centerline;
+            }
+        }
+
+        BufferedImage image =
+                new BufferedImage(
+                        previewSize,
+                        previewSize,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        Graphics2D graphics =
+                image.createGraphics();
+
+        graphics.setColor(
+                new Color(7, 9, 13)
+        );
+
+        graphics.fillRect(
+                0,
+                0,
+                previewSize,
+                previewSize
+        );
+
+        if (selected == null) {
+            graphics.dispose();
+            ImageIO.write(
+                    image,
+                    "PNG",
+                    path.toFile()
+            );
+            return;
+        }
+
+        RiverSegment segment =
+                hydrology.riverSegments()
+                        .get(selected.segmentId());
+
+        double minX = Double.POSITIVE_INFINITY;
+        double maxX = Double.NEGATIVE_INFINITY;
+        double minZ = Double.POSITIVE_INFINITY;
+        double maxZ = Double.NEGATIVE_INFINITY;
+
+        for (RiverCenterlinePoint point : selected.points()) {
+            minX = Math.min(minX, point.blockX());
+            maxX = Math.max(maxX, point.blockX());
+            minZ = Math.min(minZ, point.blockZ());
+            maxZ = Math.max(maxZ, point.blockZ());
+        }
+
+        double widthBlocks =
+                Math.max(
+                        64.0,
+                        maxX - minX
+                );
+
+        double heightBlocks =
+                Math.max(
+                        64.0,
+                        maxZ - minZ
+                );
+
+        double span =
+                Math.max(
+                        widthBlocks,
+                        heightBlocks
+                )
+                        * 1.24;
+
+        span =
+                Math.max(
+                        span,
+                        320.0
+                );
+
+        double centerX =
+                0.5 * (minX + maxX);
+
+        double centerZ =
+                0.5 * (minZ + maxZ);
+
+        double cropMinX =
+                centerX - span * 0.5;
+
+        double cropMinZ =
+                centerZ - span * 0.5;
+
+        graphics.setRenderingHint(
+                RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON
+        );
+
+        graphics.setStroke(
+                new BasicStroke(
+                        4.0f,
+                        BasicStroke.CAP_ROUND,
+                        BasicStroke.JOIN_ROUND
+                )
+        );
+
+        graphics.setColor(
+                new Color(85, 85, 90)
+        );
+
+        Path2D.Double macroPath =
+                new Path2D.Double();
+
+        boolean macroStarted =
+                false;
+
+        for (int cell : segment.cellPath()) {
+            int x = cell % world.resolution();
+            int z = cell / world.resolution();
+
+            double bx = macroGridBlockCoordinate(world, x);
+            double bz = macroGridBlockCoordinate(world, z);
+
+            double px = (bx - cropMinX) / span * (previewSize - 1);
+            double pz = (bz - cropMinZ) / span * (previewSize - 1);
+
+            if (!macroStarted) {
+                macroPath.moveTo(px, pz);
+                macroStarted = true;
+            } else {
+                macroPath.lineTo(px, pz);
+            }
+        }
+
+        graphics.draw(macroPath);
+
+        graphics.setStroke(
+                new BasicStroke(
+                        2.4f,
+                        BasicStroke.CAP_ROUND,
+                        BasicStroke.JOIN_ROUND
+                )
+        );
+
+        Path2D.Double smoothPath =
+                new Path2D.Double();
+
+        RiverCenterlinePoint first =
+                selected.points().getFirst();
+
+        smoothPath.moveTo(
+                (first.blockX() - cropMinX) / span * (previewSize - 1),
+                (first.blockZ() - cropMinZ) / span * (previewSize - 1)
+        );
+
+        for (int i = 1; i < selected.points().size(); i++) {
+            RiverCenterlinePoint point =
+                    selected.points().get(i);
+
+            smoothPath.lineTo(
+                    (point.blockX() - cropMinX) / span * (previewSize - 1),
+                    (point.blockZ() - cropMinZ) / span * (previewSize - 1)
+            );
+        }
+
+        graphics.setColor(
+                new Color(65, 225, 235)
+        );
+
+        graphics.draw(smoothPath);
+
+        graphics.setColor(
+                new Color(80, 235, 110)
+        );
+
+        graphics.fillOval(
+                (int) Math.round(
+                        (first.blockX() - cropMinX)
+                                / span
+                                * (previewSize - 1)
+                                - 5.0
+                ),
+                (int) Math.round(
+                        (first.blockZ() - cropMinZ)
+                                / span
+                                * (previewSize - 1)
+                                - 5.0
+                ),
+                10,
+                10
+        );
+
+        RiverCenterlinePoint last =
+                selected.points().getLast();
+
+        graphics.setColor(
+                new Color(245, 90, 75)
+        );
+
+        graphics.fillOval(
+                (int) Math.round(
+                        (last.blockX() - cropMinX)
+                                / span
+                                * (previewSize - 1)
+                                - 5.0
+                ),
+                (int) Math.round(
+                        (last.blockZ() - cropMinZ)
+                                / span
+                                * (previewSize - 1)
+                                - 5.0
+                ),
+                10,
+                10
+        );
+
+        graphics.setFont(
+                new Font(
+                        Font.MONOSPACED,
+                        Font.PLAIN,
+                        20
+                )
+        );
+
+        graphics.setColor(Color.WHITE);
+
+        graphics.drawString(
+                String.format(
+                        "segment %d  length %.0f  sinuosity %.3f  freedom %.2f  max offset %.1f",
+                        selected.segmentId(),
+                        selected.centerlineLengthBlocks(),
+                        selected.sinuosityRatio(),
+                        selected.lateralFreedom(),
+                        selected.maximumLateralOffsetBlocks()
+                ),
+                24,
+                34
+        );
+
+        graphics.setColor(
+                new Color(150, 150, 155)
+        );
+
+        graphics.drawString(
+                "gray = macro D8 route   cyan = Pass 2G centerline   green/red = endpoints",
+                24,
+                62
+        );
+
+        graphics.dispose();
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverChannelCorridor(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        final int previewSize =
+                2048;
+
+        BufferedImage image =
+                new BufferedImage(
+                        previewSize,
+                        previewSize,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        Graphics2D graphics =
+                image.createGraphics();
+
+        configureHydrologyGraphics(
+                graphics
+        );
+
+        graphics.setColor(
+                new Color(4, 7, 10)
+        );
+
+        graphics.fillRect(
+                0,
+                0,
+                previewSize,
+                previewSize
+        );
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        for (RiverSegmentValleyCorridor corridor : hydrology.riverSegmentValleyCorridors()) {
+            if (
+                    corridor.lakePassage()
+                            || corridor.points().size() < 2
+            ) {
+                continue;
+            }
+
+            drawValleyCorridorLayer(
+                    graphics,
+                    world,
+                    corridor,
+                    previewSize,
+                    2,
+                    new Color(32, 176, 236, 220),
+                    0.80f,
+                    8.0f
+            );
+        }
+
+        graphics.dispose();
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverValleyCorridor(
+            WorldBlueprint world,
+            Path path,
+            boolean reliefBackground
+    ) throws IOException {
+        final int previewSize =
+                2048;
+
+        BufferedImage image =
+                new BufferedImage(
+                        previewSize,
+                        previewSize,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        Graphics2D graphics =
+                image.createGraphics();
+
+        configureHydrologyGraphics(
+                graphics
+        );
+
+        if (reliefBackground) {
+            BufferedImage base =
+                    hydrologyReliefBase(world);
+
+            graphics.setRenderingHint(
+                    RenderingHints.KEY_INTERPOLATION,
+                    RenderingHints.VALUE_INTERPOLATION_BILINEAR
+            );
+
+            graphics.drawImage(
+                    base,
+                    0,
+                    0,
+                    previewSize,
+                    previewSize,
+                    null
+            );
+        } else {
+            graphics.setColor(
+                    new Color(5, 7, 9)
+            );
+
+            graphics.fillRect(
+                    0,
+                    0,
+                    previewSize,
+                    previewSize
+            );
+        }
+
+        HydrologyGrid hydrology =
+                world.hydrology();
+
+        for (RiverSegmentValleyCorridor corridor : hydrology.riverSegmentValleyCorridors()) {
+            if (
+                    corridor.lakePassage()
+                            || corridor.points().size() < 2
+            ) {
+                continue;
+            }
+
+            drawValleyCorridorLayer(
+                    graphics,
+                    world,
+                    corridor,
+                    previewSize,
+                    0,
+                    reliefBackground
+                            ? new Color(215, 171, 78, 74)
+                            : new Color(122, 95, 46, 170),
+                    1.0f,
+                    84.0f
+            );
+        }
+
+        for (RiverSegmentValleyCorridor corridor : hydrology.riverSegmentValleyCorridors()) {
+            if (
+                    corridor.lakePassage()
+                            || corridor.points().size() < 2
+            ) {
+                continue;
+            }
+
+            drawValleyCorridorLayer(
+                    graphics,
+                    world,
+                    corridor,
+                    previewSize,
+                    1,
+                    reliefBackground
+                            ? new Color(70, 206, 150, 100)
+                            : new Color(35, 145, 105, 185),
+                    0.90f,
+                    70.0f
+            );
+        }
+
+        for (RiverSegmentValleyCorridor corridor : hydrology.riverSegmentValleyCorridors()) {
+            if (
+                    corridor.lakePassage()
+                            || corridor.points().size() < 2
+            ) {
+                continue;
+            }
+
+            drawValleyCorridorLayer(
+                    graphics,
+                    world,
+                    corridor,
+                    previewSize,
+                    2,
+                    reliefBackground
+                            ? new Color(36, 182, 238, 225)
+                            : new Color(35, 185, 242, 235),
+                    0.85f,
+                    8.0f
+            );
+        }
+
+        graphics.dispose();
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeHydrologyRiverConfinement(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        final int previewSize =
+                2048;
+
+        BufferedImage image =
+                new BufferedImage(
+                        previewSize,
+                        previewSize,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        Graphics2D graphics =
+                image.createGraphics();
+
+        configureHydrologyGraphics(
+                graphics
+        );
+
+        BufferedImage base =
+                hydrologyReliefBase(world);
+
+        graphics.setRenderingHint(
+                RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_BILINEAR
+        );
+
+        graphics.drawImage(
+                base,
+                0,
+                0,
+                previewSize,
+                previewSize,
+                null
+        );
+
+        graphics.setStroke(
+                new BasicStroke(
+                        1.65f,
+                        BasicStroke.CAP_ROUND,
+                        BasicStroke.JOIN_ROUND
+                )
+        );
+
+        for (RiverSegmentValleyCorridor corridor : world.hydrology().riverSegmentValleyCorridors()) {
+            if (
+                    corridor.lakePassage()
+                            || corridor.points().size() < 2
+            ) {
+                continue;
+            }
+
+            List<RiverValleyCorridorPoint> points =
+                    corridor.points();
+
+            for (int i = 1; i < points.size(); i++) {
+                RiverValleyCorridorPoint a =
+                        points.get(i - 1);
+
+                RiverValleyCorridorPoint b =
+                        points.get(i);
+
+                double confinement =
+                        0.5
+                                * (
+                                a.confinement()
+                                        + b.confinement()
+                        );
+
+                graphics.setColor(
+                        confinementColor(
+                                confinement
+                        )
+                );
+
+                graphics.drawLine(
+                        (int) Math.round(
+                                blockToPreviewPixel(
+                                        world,
+                                        a.blockX(),
+                                        previewSize
+                                )
+                        ),
+                        (int) Math.round(
+                                blockToPreviewPixel(
+                                        world,
+                                        a.blockZ(),
+                                        previewSize
+                                )
+                        ),
+                        (int) Math.round(
+                                blockToPreviewPixel(
+                                        world,
+                                        b.blockX(),
+                                        previewSize
+                                )
+                        ),
+                        (int) Math.round(
+                                blockToPreviewPixel(
+                                        world,
+                                        b.blockZ(),
+                                        previewSize
+                                )
+                        )
+                );
+            }
+        }
+
+        graphics.dispose();
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void drawValleyCorridorLayer(
+            Graphics2D graphics,
+            WorldBlueprint world,
+            RiverSegmentValleyCorridor corridor,
+            int previewSize,
+            int layer,
+            Color color,
+            float minimumStroke,
+            float maximumStroke
+    ) {
+        List<RiverValleyCorridorPoint> points =
+                corridor.points();
+
+        graphics.setColor(color);
+
+        float previousStroke =
+                -1.0f;
+
+        for (int i = 1; i < points.size(); i++) {
+            RiverValleyCorridorPoint a =
+                    points.get(i - 1);
+
+            RiverValleyCorridorPoint b =
+                    points.get(i);
+
+            double widthBlocks =
+                    0.5
+                            * (
+                            corridorFullWidth(
+                                    a,
+                                    layer
+                            )
+                                    + corridorFullWidth(
+                                    b,
+                                    layer
+                            )
+                    );
+
+            float stroke =
+                    (float) Math.max(
+                            minimumStroke,
+                            Math.min(
+                                    maximumStroke,
+                                    widthBlocks
+                                            / world.config().worldSizeBlocks()
+                                            * previewSize
+                            )
+                    );
+
+            if (
+                    previousStroke < 0.0f
+                            || Math.abs(
+                            stroke - previousStroke
+                    ) > 0.20f
+            ) {
+                graphics.setStroke(
+                        new BasicStroke(
+                                stroke,
+                                BasicStroke.CAP_ROUND,
+                                BasicStroke.JOIN_ROUND
+                        )
+                );
+
+                previousStroke =
+                        stroke;
+            }
+
+            graphics.drawLine(
+                    (int) Math.round(
+                            blockToPreviewPixel(
+                                    world,
+                                    a.blockX(),
+                                    previewSize
+                            )
+                    ),
+                    (int) Math.round(
+                            blockToPreviewPixel(
+                                    world,
+                                    a.blockZ(),
+                                    previewSize
+                            )
+                    ),
+                    (int) Math.round(
+                            blockToPreviewPixel(
+                                    world,
+                                    b.blockX(),
+                                    previewSize
+                            )
+                    ),
+                    (int) Math.round(
+                            blockToPreviewPixel(
+                                    world,
+                                    b.blockZ(),
+                                    previewSize
+                            )
+                    )
+            );
+        }
+    }
+
+
+    private static double corridorFullWidth(
+            RiverValleyCorridorPoint point,
+            int layer
+    ) {
+        double halfWidth =
+                switch (layer) {
+                    case 0 -> point.valleyHalfWidthBlocks();
+                    case 1 -> point.floodplainHalfWidthBlocks();
+                    default -> point.channelHalfWidthBlocks();
+                };
+
+        return halfWidth * 2.0;
+    }
+
+
+    private static Color confinementColor(
+            double confinement
+    ) {
+        double t =
+                clamp01(
+                        confinement
+                );
+
+        if (t < 0.5) {
+            double local =
+                    t / 0.5;
+
+            return new Color(
+                    (int) Math.round(
+                            35
+                                    + local
+                                    * (245 - 35)
+                    ),
+                    (int) Math.round(
+                            205
+                                    + local
+                                    * (214 - 205)
+                    ),
+                    (int) Math.round(
+                            164
+                                    + local
+                                    * (66 - 164)
+                    ),
+                    235
+            );
+        }
+
+        double local =
+                (t - 0.5) / 0.5;
+
+        return new Color(
+                (int) Math.round(
+                        245
+                                + local
+                                * (238 - 245)
+                ),
+                (int) Math.round(
+                        214
+                                + local
+                                * (65 - 214)
+                ),
+                (int) Math.round(
+                        66
+                                + local
+                                * (54 - 66)
+                ),
+                235
+        );
+    }
+
+
+    private static void configureHydrologyGraphics(
+            Graphics2D graphics
+    ) {
+        graphics.setRenderingHint(
+                RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON
+        );
+
+        graphics.setRenderingHint(
+                RenderingHints.KEY_RENDERING,
+                RenderingHints.VALUE_RENDER_QUALITY
+        );
+    }
+
+    private static void writeHydrologyRiverBankfullChannel(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        final int previewSize = 2048;
+
+        BufferedImage image = hydrologyReliefBase(world);
+        BufferedImage scaled = new BufferedImage(
+                previewSize,
+                previewSize,
+                BufferedImage.TYPE_INT_RGB
+        );
+
+        Graphics2D graphics = scaled.createGraphics();
+        configureHydrologyGraphics(graphics);
+        graphics.drawImage(image, 0, 0, previewSize, previewSize, null);
+
+        for (RiverSegmentCrossSection crossSection : world.hydrology().riverSegmentCrossSections()) {
+            if (crossSection.lakePassage() || crossSection.points().size() < 2) {
+                continue;
+            }
+
+            List<RiverCrossSectionPoint> points = crossSection.points();
+            float previousStroke = -1.0f;
+            graphics.setColor(new Color(32, 185, 240, 235));
+
+            for (int i = 1; i < points.size(); i++) {
+                RiverCrossSectionPoint a = points.get(i - 1);
+                RiverCrossSectionPoint b = points.get(i);
+
+                double widthBlocks =
+                        a.bankfullHalfWidthBlocks()
+                                + b.bankfullHalfWidthBlocks();
+
+                float stroke = (float) Math.max(
+                        0.85,
+                        Math.min(
+                                18.0,
+                                widthBlocks
+                                        / world.config().worldSizeBlocks()
+                                        * previewSize
+                        )
+                );
+
+                if (previousStroke < 0.0f || Math.abs(stroke - previousStroke) > 0.15f) {
+                    graphics.setStroke(new BasicStroke(
+                            stroke,
+                            BasicStroke.CAP_ROUND,
+                            BasicStroke.JOIN_ROUND
+                    ));
+                    previousStroke = stroke;
+                }
+
+                graphics.drawLine(
+                        (int) Math.round(blockToPreviewPixel(world, a.blockX(), previewSize)),
+                        (int) Math.round(blockToPreviewPixel(world, a.blockZ(), previewSize)),
+                        (int) Math.round(blockToPreviewPixel(world, b.blockX(), previewSize)),
+                        (int) Math.round(blockToPreviewPixel(world, b.blockZ(), previewSize))
+                );
+            }
+        }
+
+        graphics.dispose();
+        ImageIO.write(scaled, "PNG", path.toFile());
+    }
+
+
+    private static void writeHydrologyRiverCrossSectionType(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        final int previewSize = 2048;
+
+        BufferedImage base = hydrologyReliefBase(world);
+        BufferedImage image = new BufferedImage(
+                previewSize,
+                previewSize,
+                BufferedImage.TYPE_INT_RGB
+        );
+
+        Graphics2D graphics = image.createGraphics();
+        configureHydrologyGraphics(graphics);
+        graphics.drawImage(base, 0, 0, previewSize, previewSize, null);
+        graphics.setStroke(new BasicStroke(
+                1.70f,
+                BasicStroke.CAP_ROUND,
+                BasicStroke.JOIN_ROUND
+        ));
+
+        for (RiverSegmentCrossSection crossSection : world.hydrology().riverSegmentCrossSections()) {
+            if (crossSection.lakePassage() || crossSection.points().size() < 2) {
+                continue;
+            }
+
+            List<RiverCrossSectionPoint> points = crossSection.points();
+            for (int i = 1; i < points.size(); i++) {
+                RiverCrossSectionPoint a = points.get(i - 1);
+                RiverCrossSectionPoint b = points.get(i);
+
+                graphics.setColor(reachTypeColor(b.reachType()));
+                graphics.drawLine(
+                        (int) Math.round(blockToPreviewPixel(world, a.blockX(), previewSize)),
+                        (int) Math.round(blockToPreviewPixel(world, a.blockZ(), previewSize)),
+                        (int) Math.round(blockToPreviewPixel(world, b.blockX(), previewSize)),
+                        (int) Math.round(blockToPreviewPixel(world, b.blockZ(), previewSize))
+                );
+            }
+        }
+
+        graphics.dispose();
+        ImageIO.write(image, "PNG", path.toFile());
+    }
+
+
+    private static void writeHydrologyRiverCrossSectionAsymmetry(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        final int previewSize = 2048;
+
+        BufferedImage base = hydrologyReliefBase(world);
+        BufferedImage image = new BufferedImage(
+                previewSize,
+                previewSize,
+                BufferedImage.TYPE_INT_RGB
+        );
+
+        Graphics2D graphics = image.createGraphics();
+        configureHydrologyGraphics(graphics);
+        graphics.drawImage(base, 0, 0, previewSize, previewSize, null);
+        graphics.setStroke(new BasicStroke(
+                1.70f,
+                BasicStroke.CAP_ROUND,
+                BasicStroke.JOIN_ROUND
+        ));
+
+        for (RiverSegmentCrossSection crossSection : world.hydrology().riverSegmentCrossSections()) {
+            if (crossSection.lakePassage() || crossSection.points().size() < 2) {
+                continue;
+            }
+
+            List<RiverCrossSectionPoint> points = crossSection.points();
+            for (int i = 1; i < points.size(); i++) {
+                RiverCrossSectionPoint a = points.get(i - 1);
+                RiverCrossSectionPoint b = points.get(i);
+                double bias = 0.5 * (a.lateralBias() + b.lateralBias());
+
+                graphics.setColor(asymmetryColor(bias));
+                graphics.drawLine(
+                        (int) Math.round(blockToPreviewPixel(world, a.blockX(), previewSize)),
+                        (int) Math.round(blockToPreviewPixel(world, a.blockZ(), previewSize)),
+                        (int) Math.round(blockToPreviewPixel(world, b.blockX(), previewSize)),
+                        (int) Math.round(blockToPreviewPixel(world, b.blockZ(), previewSize))
+                );
+            }
+        }
+
+        graphics.dispose();
+        ImageIO.write(image, "PNG", path.toFile());
+    }
+
+
+    private static Color reachTypeColor(
+            RiverReachType type
+    ) {
+        return switch (type) {
+            case MOUNTAIN_CONFINED -> new Color(222, 75, 62, 235);
+            case V_VALLEY -> new Color(232, 147, 58, 235);
+            case FOOTHILL -> new Color(220, 211, 72, 235);
+            case ALLUVIAL -> new Color(72, 190, 126, 235);
+            case LOWLAND_FLOODPLAIN -> new Color(45, 170, 232, 235);
+        };
+    }
+
+
+    private static Color asymmetryColor(
+            double bias
+    ) {
+        double t = clamp01(0.5 + bias);
+
+        if (t < 0.5) {
+            double local = t / 0.5;
+            return new Color(
+                    (int) Math.round(55 + local * 180),
+                    (int) Math.round(115 + local * 120),
+                    (int) Math.round(235),
+                    235
+            );
+        }
+
+        double local = (t - 0.5) / 0.5;
+        return new Color(
+                235,
+                (int) Math.round(235 - local * 145),
+                (int) Math.round(235 - local * 165),
+                235
+        );
+    }
+
+
+    private static void writeHydrologyRiverCarvingStrength(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        writeHydrologyRiverConstraintScalar(
+                world,
+                path,
+                0
+        );
+    }
+
+
+    private static void writeHydrologyRiverCutBudget(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        writeHydrologyRiverConstraintScalar(
+                world,
+                path,
+                1
+        );
+    }
+
+
+    private static void writeHydrologyRiverFloodplainTarget(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        writeHydrologyRiverConstraintScalar(
+                world,
+                path,
+                2
+        );
+    }
+
+
+    private static void writeHydrologyRiverConstraintScalar(
+            WorldBlueprint world,
+            Path path,
+            int mode
+    ) throws IOException {
+        final int previewSize = 2048;
+
+        BufferedImage base = hydrologyReliefBase(world);
+        BufferedImage image = new BufferedImage(
+                previewSize,
+                previewSize,
+                BufferedImage.TYPE_INT_RGB
+        );
+
+        Graphics2D graphics = image.createGraphics();
+        configureHydrologyGraphics(graphics);
+        graphics.drawImage(base, 0, 0, previewSize, previewSize, null);
+        graphics.setStroke(new BasicStroke(
+                1.75f,
+                BasicStroke.CAP_ROUND,
+                BasicStroke.JOIN_ROUND
+        ));
+
+        for (RiverSegmentCarvingConstraints constraints : world.hydrology().riverSegmentCarvingConstraints()) {
+            if (constraints.lakePassage() || constraints.points().size() < 2) {
+                continue;
+            }
+
+            List<RiverCarvingConstraintPoint> points = constraints.points();
+
+            for (int i = 1; i < points.size(); i++) {
+                RiverCarvingConstraintPoint a = points.get(i - 1);
+                RiverCarvingConstraintPoint b = points.get(i);
+
+                double scalar = switch (mode) {
+                    case 1 -> 0.5 * (a.maximumCutDepthBlocks() + b.maximumCutDepthBlocks()) / 64.0;
+                    case 2 -> 0.5 * (
+                            (a.targetFloodplainElevation() - a.targetBedElevation())
+                                    + (b.targetFloodplainElevation() - b.targetBedElevation())
+                    ) / 20.0;
+                    default -> 0.5 * (a.cutStrength() + b.cutStrength());
+                };
+
+                graphics.setColor(constraintScalarColor(scalar));
+                graphics.drawLine(
+                        (int) Math.round(blockToPreviewPixel(world, a.blockX(), previewSize)),
+                        (int) Math.round(blockToPreviewPixel(world, a.blockZ(), previewSize)),
+                        (int) Math.round(blockToPreviewPixel(world, b.blockX(), previewSize)),
+                        (int) Math.round(blockToPreviewPixel(world, b.blockZ(), previewSize))
+                );
+            }
+        }
+
+        graphics.dispose();
+        ImageIO.write(image, "PNG", path.toFile());
+    }
+
+
+    private static Color constraintScalarColor(
+            double value
+    ) {
+        double t = clamp01(value);
+
+        if (t < 0.5) {
+            double local = t / 0.5;
+            return new Color(
+                    (int) Math.round(45 + local * 190),
+                    (int) Math.round(165 + local * 65),
+                    (int) Math.round(225 - local * 145),
+                    235
+            );
+        }
+
+        double local = (t - 0.5) / 0.5;
+        return new Color(
+                235,
+                (int) Math.round(230 - local * 170),
+                (int) Math.round(80 - local * 35),
+                235
+        );
+    }
+
+    private static void writeHydrologyRiverTerrainDelta(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size = world.resolution();
+        BufferedImage image = new BufferedImage(
+                size,
+                size,
+                BufferedImage.TYPE_INT_RGB
+        );
+
+        double maximum = Math.max(
+                1.0,
+                world.hydrology()
+                        .maximumAbsoluteRiverTerrainDeltaBlocks()
+        );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                if (world.landMask(x, z) < 0.5f) {
+                    image.setRGB(x, z, rgb(0, 0, 0));
+                    continue;
+                }
+
+                double delta =
+                        world.hydrology()
+                                .riverTerrainDelta(x, z);
+
+                double normalized = clamp01(
+                        Math.abs(delta) / maximum
+                );
+
+                int color;
+
+                if (Math.abs(delta) < 1.0e-4) {
+                    int gray = 36;
+                    color = rgb(gray, gray, gray);
+                } else if (delta < 0.0) {
+                    color = rgb(
+                            clamp255(30.0 + 35.0 * normalized),
+                            clamp255(75.0 + 120.0 * normalized),
+                            clamp255(120.0 + 135.0 * normalized)
+                    );
+                } else {
+                    color = rgb(
+                            clamp255(120.0 + 135.0 * normalized),
+                            clamp255(95.0 + 110.0 * normalized),
+                            clamp255(35.0 + 25.0 * normalized)
+                    );
+                }
+
+                image.setRGB(x, z, color);
+            }
+        }
+
+        ImageIO.write(image, "PNG", path.toFile());
+    }
+
+
+    private static void writeHydrologyRiverIntegratedRelief(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size = world.resolution();
+        BufferedImage image = new BufferedImage(
+                size,
+                size,
+                BufferedImage.TYPE_INT_RGB
+        );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                if (world.landMask(x, z) < 0.5f) {
+                    image.setRGB(x, z, rgb(0, 0, 0));
+                    continue;
+                }
+
+                int west = Math.max(0, x - 1);
+                int east = Math.min(size - 1, x + 1);
+                int north = Math.max(0, z - 1);
+                int south = Math.min(size - 1, z + 1);
+
+                double dx =
+                        world.elevation(east, z)
+                                - world.elevation(west, z);
+
+                double dz =
+                        world.elevation(x, south)
+                                - world.elevation(x, north);
+
+                int shade = clamp255(
+                        (0.48
+                                - dx * 0.0034
+                                - dz * 0.0034)
+                                * 255.0
+                );
+
+                double floor =
+                        clamp01(
+                                world.hydrology()
+                                        .riverValleyFloorStrength(x, z)
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(
+                                clamp255(shade * (1.0 - 0.14 * floor)),
+                                clamp255(shade * (1.0 + 0.06 * floor)),
+                                clamp255(shade * (1.0 + 0.10 * floor))
+                        )
+                );
+            }
+        }
+
+        ImageIO.write(image, "PNG", path.toFile());
+    }
+
+
+    private static void writeHydrologyRiverValleyFloor(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size = world.resolution();
+        BufferedImage image = new BufferedImage(
+                size,
+                size,
+                BufferedImage.TYPE_INT_RGB
+        );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                if (world.landMask(x, z) < 0.5f) {
+                    image.setRGB(x, z, rgb(0, 0, 0));
+                    continue;
+                }
+
+                double strength = clamp01(
+                        world.hydrology()
+                                .riverValleyFloorStrength(x, z)
+                );
+
+                if (strength <= 1.0e-5) {
+                    image.setRGB(x, z, rgb(24, 27, 30));
+                    continue;
+                }
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(
+                                clamp255(30.0 + 50.0 * strength),
+                                clamp255(80.0 + 155.0 * strength),
+                                clamp255(70.0 + 95.0 * strength)
+                        )
+                );
+            }
+        }
+
+        ImageIO.write(image, "PNG", path.toFile());
+    }
+
+
+    private static void writeHydrologyRiverChannelIncision(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size = world.resolution();
+        BufferedImage image = new BufferedImage(
+                size,
+                size,
+                BufferedImage.TYPE_INT_RGB
+        );
+
+        double maximum = Math.max(
+                1.0,
+                world.hydrology()
+                        .maximumRiverChannelIncisionBlocks()
+        );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                if (world.landMask(x, z) < 0.5f) {
+                    image.setRGB(x, z, rgb(0, 0, 0));
+                    continue;
+                }
+
+                double delta =
+                        world.hydrology()
+                                .riverChannelDelta(x, z);
+
+                if (delta >= -1.0e-4) {
+                    image.setRGB(
+                            x,
+                            z,
+                            rgb(30, 32, 35)
+                    );
+                    continue;
+                }
+
+                double normalized =
+                        clamp01(
+                                -delta / maximum
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(
+                                clamp255(20.0 + 30.0 * normalized),
+                                clamp255(90.0 + 120.0 * normalized),
+                                clamp255(145.0 + 110.0 * normalized)
+                        )
+                );
+            }
+        }
+
+        ImageIO.write(image, "PNG", path.toFile());
+    }
+
+
+    private static void writeHydrologyRiverWaterSurface(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size = world.resolution();
+        BufferedImage image = new BufferedImage(
+                size,
+                size,
+                BufferedImage.TYPE_INT_RGB
+        );
+
+        double minimum =
+                world.hydrology()
+                        .minimumRiverWaterSurfaceElevation();
+
+        double maximum =
+                world.hydrology()
+                        .maximumRiverWaterSurfaceElevation();
+
+        double range =
+                Math.max(
+                        1.0,
+                        maximum - minimum
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                if (world.landMask(x, z) < 0.5f) {
+                    image.setRGB(x, z, rgb(0, 0, 0));
+                    continue;
+                }
+
+                double strength =
+                        clamp01(
+                                world.hydrology()
+                                        .riverChannelStrength(x, z)
+                        );
+
+                if (strength <= 1.0e-5) {
+                    image.setRGB(
+                            x,
+                            z,
+                            rgb(28, 31, 34)
+                    );
+                    continue;
+                }
+
+                double elevation =
+                        world.hydrology()
+                                .riverWaterSurfaceElevation(x, z);
+
+                double normalized =
+                        clamp01(
+                                (elevation - minimum) / range
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(
+                                clamp255(25.0 + 60.0 * normalized),
+                                clamp255(120.0 + 90.0 * normalized),
+                                clamp255(230.0 - 55.0 * normalized)
+                        )
+                );
+            }
+        }
+
+        ImageIO.write(image, "PNG", path.toFile());
+    }
+
+
+    private static void writeHydrologyRiverFinalRelief(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size = world.resolution();
+        BufferedImage image = new BufferedImage(
+                size,
+                size,
+                BufferedImage.TYPE_INT_RGB
+        );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                if (world.landMask(x, z) < 0.5f) {
+                    image.setRGB(x, z, rgb(0, 0, 0));
+                    continue;
+                }
+
+                int west = Math.max(0, x - 1);
+                int east = Math.min(size - 1, x + 1);
+                int north = Math.max(0, z - 1);
+                int south = Math.min(size - 1, z + 1);
+
+                double dx =
+                        world.elevation(east, z)
+                                - world.elevation(west, z);
+
+                double dz =
+                        world.elevation(x, south)
+                                - world.elevation(x, north);
+
+                int shade =
+                        clamp255(
+                                (0.48
+                                        - dx * 0.0034
+                                        - dz * 0.0034)
+                                        * 255.0
+                        );
+
+                double channel =
+                        clamp01(
+                                world.hydrology()
+                                        .riverChannelStrength(x, z)
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(
+                                clamp255(shade * (1.0 - 0.16 * channel)),
+                                clamp255(shade * (1.0 + 0.03 * channel)),
+                                clamp255(shade * (1.0 + 0.14 * channel))
+                        )
+                );
+            }
+        }
+
+        ImageIO.write(image, "PNG", path.toFile());
+    }
+
+
+    private static BufferedImage hydrologyReliefBase(
+            WorldBlueprint world
+    ) {
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                if (world.landMask(x, z) < 0.5f) {
+                    image.setRGB(
+                            x,
+                            z,
+                            rgb(0, 0, 0)
+                    );
+                    continue;
+                }
+
+                int west = Math.max(0, x - 1);
+                int east = Math.min(size - 1, x + 1);
+                int north = Math.max(0, z - 1);
+                int south = Math.min(size - 1, z + 1);
+
+                double dx =
+                        world.elevation(east, z)
+                                - world.elevation(west, z);
+
+                double dz =
+                        world.elevation(x, south)
+                                - world.elevation(x, north);
+
+                int shade =
+                        clamp255(
+                                (0.26
+                                        - dx * 0.0025
+                                        - dz * 0.0025)
+                                        * 255.0
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(
+                                shade,
+                                shade,
+                                shade
+                        )
+                );
+            }
+        }
+
+        return image;
+    }
+
+
+    private static double blockToPreviewPixel(
+            WorldBlueprint world,
+            double coordinate,
+            int previewSize
+    ) {
+        double halfWorld =
+                world.config().worldSizeBlocks()
+                        * 0.5;
+
+        return (
+                coordinate + halfWorld
+        )
+                / world.config().worldSizeBlocks()
+                * (previewSize - 1);
+    }
+
+
+    private static double macroGridBlockCoordinate(
+            WorldBlueprint world,
+            int gridCoordinate
+    ) {
+        double halfWorld =
+                world.config().worldSizeBlocks()
+                        * 0.5;
+
+        double spacing =
+                world.config().worldSizeBlocks()
+                        / Math.max(
+                        1.0,
+                        world.resolution() - 1.0
+                );
+
+        return -halfWorld
+                + gridCoordinate * spacing;
+    }
+
+
+    private static int centerlineOffsetColor(
+            double normalized
+    ) {
+        double t =
+                clamp01(normalized);
+
+        if (t < 0.5) {
+            double local =
+                    t * 2.0;
+
+            return rgb(
+                    clamp255(40.0 + 190.0 * local),
+                    clamp255(220.0 + 25.0 * local),
+                    clamp255(100.0 - 55.0 * local)
+            );
+        }
+
+        double local =
+                (t - 0.5) * 2.0;
+
+        return rgb(
+                245,
+                clamp255(245.0 - 195.0 * local),
+                clamp255(45.0 - 20.0 * local)
+        );
+    }
+
+
+    private static int continuityColor(
+            double normalized
+    ) {
+        normalized =
+                clamp01(normalized);
+
+        if (normalized < 0.5) {
+            double t =
+                    normalized / 0.5;
+
+            return rgb(
+                    clamp255(30.0 + 210.0 * t),
+                    clamp255(180.0 + 40.0 * t),
+                    45
+            );
+        }
+
+        double t =
+                (normalized - 0.5) / 0.5;
+
+        return rgb(
+                240,
+                clamp255(220.0 - 185.0 * t),
+                45
+        );
+    }
+
+
+    private record CorrectedProfilePoint(
+            double distanceBlocks,
+            double terrainElevation,
+            double plannedBedElevation,
+            boolean breakBefore
+    ) {
+    }
+
+
+    private record CorrectedProfileSeries(
+            List<CorrectedProfilePoint> points,
+            long mouthAccumulation
+    ) {
+    }
+
+
+    private record ProfilePoint(
+            double distanceBlocks,
+            double elevation
+    ) {
+    }
+
+
+    private record ProfileSeries(
+            List<ProfilePoint> points,
+            long mouthAccumulation
+    ) {
+    }
+
+
+    private static BufferedImage hydrologyDiagnosticBase(
+            WorldBlueprint world,
+            int landBrightness
+    ) {
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        int landColor =
+                rgb(
+                        landBrightness,
+                        landBrightness,
+                        landBrightness
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                image.setRGB(
+                        x,
+                        z,
+                        world.landMask(x, z) >= 0.5f
+                                ? landColor
+                                : rgb(0, 0, 0)
+                );
+            }
+        }
+
+        return image;
+    }
+
+
+    private static int heatColor(
+            double normalized
+    ) {
+        double t =
+                clamp01(normalized);
+
+        if (t < 0.5) {
+            double local =
+                    t * 2.0;
+
+            return rgb(
+                    clamp255(35.0 + 80.0 * local),
+                    clamp255(105.0 + 140.0 * local),
+                    clamp255(225.0 - 120.0 * local)
+            );
+        }
+
+        double local =
+                (t - 0.5) * 2.0;
+
+        return rgb(
+                clamp255(115.0 + 140.0 * local),
+                clamp255(245.0 - 170.0 * local),
+                clamp255(105.0 - 55.0 * local)
+        );
+    }
+
+
+    private static int riverScaleColor(
+            RiverScale scale
+    ) {
+        return switch (scale) {
+            case CREEK -> rgb(65, 105, 180);
+            case STREAM -> rgb(45, 150, 220);
+            case SMALL_RIVER -> rgb(40, 210, 230);
+            case RIVER -> rgb(75, 225, 145);
+            case LARGE_RIVER -> rgb(245, 205, 55);
+            case MAJOR_RIVER -> rgb(255, 80, 60);
+        };
+    }
+
+
+    private static int strahlerColor(
+            int order
+    ) {
+        return switch (order) {
+            case 1 -> rgb(55, 105, 190);
+            case 2 -> rgb(35, 175, 225);
+            case 3 -> rgb(55, 220, 155);
+            case 4 -> rgb(220, 225, 60);
+            case 5 -> rgb(255, 155, 45);
+            case 6 -> rgb(255, 75, 55);
+            default -> order >= 7
+                    ? rgb(235, 70, 235)
+                    : rgb(45, 45, 45);
+        };
+    }
+
+
+    private static int riverNodeColor(
+            RiverNodeType type
+    ) {
+        return switch (type) {
+            case SOURCE -> rgb(85, 235, 95);
+            case CONFLUENCE -> rgb(255, 225, 70);
+            case LAKE_INLET -> rgb(40, 235, 235);
+            case LAKE_OUTLET -> rgb(70, 115, 255);
+            case MOUTH -> rgb(255, 75, 65);
+        };
+    }
+
+
+    private static void drawMarker(
+            BufferedImage image,
+            int x,
+            int z,
+            int color,
+            int radius
+    ) {
+        for (int dz = -radius; dz <= radius; dz++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                int px = x + dx;
+                int pz = z + dz;
+
+                if (
+                        px >= 0
+                                && px < image.getWidth()
+                                && pz >= 0
+                                && pz < image.getHeight()
+                ) {
+                    image.setRGB(px, pz, color);
+                }
+            }
+        }
+    }
+
+
+    private static int streamClassColor(
+            StreamClass streamClass
+    ) {
+        return switch (streamClass) {
+            case NONE -> rgb(0, 0, 0);
+            case HEADWATER -> rgb(55, 105, 180);
+            case TRIBUTARY -> rgb(35, 160, 220);
+            case RIVER -> rgb(35, 215, 235);
+            case MAJOR_RIVER -> rgb(255, 205, 55);
+            case TRUNK_RIVER -> rgb(255, 80, 60);
+        };
     }
 
 
