@@ -33,6 +33,9 @@ import java.util.EnumMap;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
+import java.util.List;
+import dev.lemma.finiteworlds.core.SeedUtil;
+import dev.lemma.finiteworlds.core.noise.ValueNoise;
 import java.util.stream.Stream;
 
 /** Places the locked 3G intent palette with continuous boundaries and physical river footprints. */
@@ -77,6 +80,8 @@ public final class FiniteBiomeSource extends BiomeSource {
     private volatile long seed;
     private volatile boolean seedBound;
     private final Map<BiomeIntent, RegistryEntry<Biome>> palette;
+    private final Map<BiomeIntent, List<RegistryEntry<Biome>>> regionalPalette;
+    private final Map<String, RegistryEntry<Biome>> temperateCompanions;
     private final Map<BiomeIntent, RegistryEntry<Biome>> belowSnowlinePalette;
     private final ThreadLocal<HorizontalBiomeCache> horizontalCache =
             ThreadLocal.withInitial(HorizontalBiomeCache::new);
@@ -98,6 +103,23 @@ public final class FiniteBiomeSource extends BiomeSource {
             resolved.put(intent, biome);
         }
         this.palette = Map.copyOf(resolved);
+        Map<BiomeIntent,List<RegistryEntry<Biome>>> regional=new EnumMap<>(BiomeIntent.class);
+        Map<String,RegistryEntry<Biome>> companions=new java.util.HashMap<>();
+        for(BiomeIntent intent:BiomeIntent.values()) {
+            var entries=BiomeTargetResolver.variants(intent).stream().map(id -> registry.getOptional(key(id)))
+                .flatMap(Optional::stream).map(entry -> (RegistryEntry<Biome>)entry).toList();
+            boolean optionalPresent=entries.stream().anyMatch(entry -> entry.getKey().orElseThrow()
+                .getValue().getNamespace().equals("terralith"));
+            if(optionalPresent)entries=entries.stream().filter(entry -> entry.getKey().orElseThrow()
+                .getValue().getNamespace().equals("terralith")).toList();
+            regional.put(intent,entries.isEmpty()?List.of(resolved.get(intent)):entries);
+            for(var entry:regional.get(intent)) {
+                String id=entry.getKey().orElseThrow().getValue().toString();
+                registry.getOptional(key(TemperateBiomeVariants.warmId(id))).ifPresent(warm -> companions.put(id,warm));
+            }
+        }
+        this.regionalPalette=Map.copyOf(regional);
+        this.temperateCompanions=Map.copyOf(companions);
         // The vanilla taiga/alpine substitutes have cold base temperatures.
         // Minecraft cools biomes again with altitude, making those substitutes
         // snow below the authored belt. Warm native variants keep lower forest
@@ -166,6 +188,13 @@ public final class FiniteBiomeSource extends BiomeSource {
         return plannedWorld().sampler().intentAtBlock(blockX, blockZ);
     }
 
+    public double snowlineAtBlock(int x,int z) {
+        return plannedWorld().sampler().snowlineAtBlock(x,z);
+    }
+    public double permanentSnowlineAtBlock(int x,int z) {
+        return plannedWorld().sampler().permanentSnowlineAtBlock(x,z);
+    }
+
     private PlannedWorld plannedWorld() {
         if (!seedBound) {
             throw new IllegalStateException("Finite Worlds biomes have not received the saved world seed yet");
@@ -179,7 +208,8 @@ public final class FiniteBiomeSource extends BiomeSource {
                             seed, WorldConfig.production());
                     result = new PlannedWorld(blueprint, new BiomeIntentSampler(
                             BiomeIntentPlanner.plan(blueprint), blueprint.config(), seed),
-                            new TerrainSampler(blueprint, seed));
+                            new TerrainSampler(blueprint, seed),
+                            new ValueNoise(SeedUtil.derive(seed, "regional-biome-variants")));
                     plannedWorld = result;
                 }
             }
@@ -194,7 +224,9 @@ public final class FiniteBiomeSource extends BiomeSource {
 
     @Override
     protected Stream<RegistryEntry<Biome>> biomeStream() {
-        return Stream.concat(palette.values().stream(), belowSnowlinePalette.values().stream()).distinct();
+        return Stream.of(palette.values().stream(),belowSnowlinePalette.values().stream(),
+                regionalPalette.values().stream().flatMap(List::stream),temperateCompanions.values().stream())
+                .flatMap(stream -> stream).distinct();
     }
 
     @Override
@@ -229,6 +261,7 @@ public final class FiniteBiomeSource extends BiomeSource {
                     ? BiomeIntent.ESTUARY : BiomeIntent.RIVER)
                 : world.sampler().landIntentAtBlock(blockX, blockZ);
         double surface = column.terrainElevation();
+        RegistryEntry<Biome> selected=regionalBiome(intent,world,blockX,blockZ);
         if (surface < world.sampler().snowlineAtBlock(blockX, blockZ)) {
             RegistryEntry<Biome> warmer = belowSnowlinePalette.get(intent);
             boolean snowBearingIntent = switch (intent) {
@@ -236,10 +269,11 @@ public final class FiniteBiomeSource extends BiomeSource {
                         PERMANENT_SNOWFIELD, FROZEN_CLIFFS, COLD_STEPPE -> true;
                 default -> false;
             };
-            if (warmer != null && (snowBearingIntent || palette.get(intent).value().isCold(
+            if (warmer != null && (snowBearingIntent || selected.value().isCold(
                     new BlockPos(blockX, (int) Math.floor(surface + 1.0), blockZ),
                     world.blueprint().config().seaLevel()))) {
-                return warmer;
+                var companion=temperateCompanions.get(selected.getKey().orElseThrow().getValue().toString());
+                return companion!=null?companion:warmer;
             }
         }
         if (surface < world.sampler().permanentSnowlineAtBlock(blockX, blockZ)) {
@@ -249,10 +283,17 @@ public final class FiniteBiomeSource extends BiomeSource {
                 default -> intent;
             };
         }
-        return palette.get(intent);
+        return regionalBiome(intent,world,blockX,blockZ);
     }
 
-    private record PlannedWorld(WorldBlueprint blueprint, BiomeIntentSampler sampler, TerrainSampler terrain) {
+    private RegistryEntry<Biome> regionalBiome(BiomeIntent intent,PlannedWorld world,int x,int z) {
+        var choices=regionalPalette.get(intent);
+        double region=world.variants().fbm(x/1200.0,z/1200.0,3,2,.5)*1.6;
+        int index=Math.max(0,Math.min(choices.size()-1,(int)((region+1)*.5*choices.size())));
+        return choices.get(index);
+    }
+
+    private record PlannedWorld(WorldBlueprint blueprint, BiomeIntentSampler sampler, TerrainSampler terrain, ValueNoise variants) {
     }
 
     private static final class HorizontalBiomeCache {

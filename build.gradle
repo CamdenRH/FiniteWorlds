@@ -61,6 +61,12 @@ jar {
 test {
 	useJUnitPlatform()
 	maxHeapSize = '2G'
+	systemProperty 'finiteworlds.projectDir', projectDir.absolutePath
+	if (providers.gradleProperty('terralithJar').isPresent()) {
+		def compatJar = file(providers.gradleProperty('terralithJar').get())
+		inputs.file(compatJar)
+		systemProperty 'finiteworlds.terralithJar', compatJar.absolutePath
+	}
 	workingDir = file('build/test-runtime')
 	doFirst {
 		workingDir.mkdirs()

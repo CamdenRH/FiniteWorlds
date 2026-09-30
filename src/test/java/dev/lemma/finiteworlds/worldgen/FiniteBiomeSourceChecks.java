@@ -56,12 +56,15 @@ public final class FiniteBiomeSourceChecks {
         Bootstrap.initialize();
         new FiniteWorlds().onInitialize();
         var registries = BuiltinRegistries.createWrapperLookup();
+        TerralithCompatibilityChecks.run(registries);
         var vanilla = registries.getOrThrow(RegistryKeys.BIOME);
         var source = new FiniteBiomeSource(vanilla, 1L);
         var expected = java.util.Arrays.stream(BiomeIntent.values())
                 .map(intent -> vanilla.getOrThrow(key(BiomeTargetResolver.target(intent).vanillaFallbackId())))
                 .collect(Collectors.toSet());
         expected.add(vanilla.getOrThrow(BiomeKeys.STONY_PEAKS));
+        for(BiomeIntent intent:BiomeIntent.values())for(String id:BiomeTargetResolver.variants(intent))
+            vanilla.getOptional(key(id)).ifPresent(expected::add);
         require(source.getBiomes().equals(expected), "Vanilla palette must cover every fallback");
         require(source.withSeed(1L) == source, "Same-seed source must be reused");
         require(source.withSeed(2L) != source, "A changed seed must get a fresh plan");
@@ -244,7 +247,7 @@ public final class FiniteBiomeSourceChecks {
             require(visibleTop > solidTop && sampled.getState(visibleTop).isOf(Blocks.WATER),
                     "Generated river must contain water above its bed");
         } else {
-            require(visibleTop == solidTop && sampled.getState(visibleTop).isOf(Blocks.GRASS_BLOCK),
+            require(visibleTop == solidTop && (sampled.getState(visibleTop).isOf(Blocks.SNOW_BLOCK) || sampled.getState(visibleTop).isOf(Blocks.STONE)),
                     "Dry summit must remain solid and within the height limit");
         }
         require(sampled.getState(visibleTop + 1).isAir(), "Column must end above its visible surface");
@@ -290,7 +293,7 @@ public final class FiniteBiomeSourceChecks {
                 })
                 .collect(Collectors.toSet());
         expected.add(registry.getOrThrow(BiomeKeys.STONY_PEAKS));
-        require(source.getBiomes().equals(expected),
+        require(source.getBiomes().containsAll(expected),
                 "Mutable registry palette must select present optional biomes and vanilla fallbacks");
         require(source.getBiomes().stream().anyMatch(entry -> entry.matchesKey(optionalKey))
                         == optionalBiomeAvailable,

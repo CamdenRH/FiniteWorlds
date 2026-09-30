@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "dev.lemma.finiteworlds.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["DimensionOptionsRegistryHolderMixin", "BiomeTagInheritanceMixin", "SimpleRegistryTagAccessor"],
+  "injectors": {"defaultRequire": 1}
+}

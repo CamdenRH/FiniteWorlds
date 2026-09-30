@@ -129,6 +129,28 @@ public final class BiomeTargetResolver {
         };
     }
 
+    /** Natural regional variants; fantasy and tropical palettes are intentionally excluded. */
+    public static java.util.List<String> variants(BiomeIntent intent) {
+        return switch(intent) {
+            case TEMPERATE_FOREST -> java.util.List.of("terralith:temperate_highlands", "terralith:valley_clearing",
+                "terralith:highlands", "minecraft:forest", "minecraft:birch_forest", "minecraft:flower_forest");
+            case MONTANE_FOREST -> java.util.List.of("terralith:forested_highlands", "terralith:shield",
+                "terralith:birch_taiga", "terralith:yosemite_lowlands");
+            case WET_HIGHLAND_FOREST, TEMPERATE_RAINFOREST -> java.util.List.of("terralith:cloud_forest",
+                "terralith:haze_mountain", "terralith:lush_valley");
+            case DRY_FOREST -> java.util.List.of("terralith:highlands", "terralith:brushland", "terralith:shrubland");
+            case SHRUB_STEPPE -> java.util.List.of("terralith:steppe", "terralith:rocky_shrubland",
+                "minecraft:plains", "minecraft:meadow");
+            case COLD_STEPPE -> java.util.List.of("terralith:cold_shrubland", "terralith:wintry_lowlands");
+            case ALPINE_HIGHLANDS -> java.util.List.of("terralith:alpine_highlands", "terralith:temperate_highlands");
+            case ROCKY_ALPINE -> java.util.List.of("terralith:rocky_mountains", "terralith:yosemite_cliffs",
+                "terralith:stony_spires");
+            case SUBALPINE_GROVE -> java.util.List.of("terralith:alpine_grove", "terralith:wintry_forest",
+                "terralith:snowy_shield");
+            default -> java.util.List.of(target(intent).preferredId());
+        };
+    }
+
     private static BiomeTarget vanilla(
             String id
     ) {

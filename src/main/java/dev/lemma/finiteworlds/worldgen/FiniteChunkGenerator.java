@@ -193,8 +193,6 @@ public final class FiniteChunkGenerator
                                 worldZ
                         );
 
-                BiomeIntent intent = surfaceIntent(worldX, worldZ);
-
                 for (
                         int y = DEVELOPMENT_TERRAIN_MIN_Y;
                         y <= column.top();
@@ -255,8 +253,6 @@ public final class FiniteChunkGenerator
 
         BlockColumn column = blockColumn(x, z);
 
-        BiomeIntent intent = surfaceIntent(x, z);
-
         for (
                 int y = DEVELOPMENT_TERRAIN_MIN_Y;
                 y <= column.top();
@@ -285,7 +281,19 @@ public final class FiniteChunkGenerator
                 : MIN_Y - 1;
         BiomeIntent intent = getBiomeSource() instanceof FiniteBiomeSource finite
                 ? finite.intentAtBlock(worldX, worldZ) : BiomeIntent.TEMPERATE_FOREST;
-        return new BlockColumn(height, waterHeight, intent);
+        boolean exposedRock=false;
+        int snowDepth=0;
+        if(waterHeight<=height && height>300 && getBiomeSource() instanceof FiniteBiomeSource finite) {
+            double dx=(terrainSampler().surfaceElevationAt(worldX+4,worldZ)
+                -terrainSampler().surfaceElevationAt(worldX-4,worldZ))/8.0;
+            double dz=(terrainSampler().surfaceElevationAt(worldX,worldZ+4)
+                -terrainSampler().surfaceElevationAt(worldX,worldZ-4))/8.0;
+            double slope=Math.hypot(dx,dz);
+            exposedRock=slope>.70 || height>finite.snowlineAtBlock(worldX,worldZ)+150;
+            if(height>=finite.permanentSnowlineAtBlock(worldX,worldZ)&&slope<1.1)
+                snowDepth=height>finite.permanentSnowlineAtBlock(worldX,worldZ)+100?4:2;
+        }
+        return new BlockColumn(height, waterHeight, intent, exposedRock, snowDepth);
     }
 
     private static int clampHeight(int height) {
@@ -306,18 +314,16 @@ public final class FiniteChunkGenerator
             return (y >= column.terrainHeight() - 3 ? Blocks.GRAVEL : Blocks.STONE)
                     .getDefaultState();
         }
+        int depth=column.terrainHeight()-y;
+        if(column.snowDepth()>0 && depth<column.snowDepth())return Blocks.SNOW_BLOCK.getDefaultState();
+        if(column.exposedRock() || column.snowDepth()>0)return Blocks.STONE.getDefaultState();
         return CoastalSurfaceMaterials.stateAt(y, column.terrainHeight(), column.intent());
     }
 
-    private record BlockColumn(int terrainHeight, int waterHeight, BiomeIntent intent) {
+    private record BlockColumn(int terrainHeight, int waterHeight, BiomeIntent intent, boolean exposedRock, int snowDepth) {
         int top() {
             return Math.max(terrainHeight, waterHeight);
         }
-    }
-
-    private BiomeIntent surfaceIntent(int x, int z) {
-        return getBiomeSource() instanceof FiniteBiomeSource finite
-                ? finite.intentAtBlock(x, z) : BiomeIntent.TEMPERATE_FOREST;
     }
 
     @Override

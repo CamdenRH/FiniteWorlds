@@ -34,6 +34,8 @@ public final class FiniteWorlds implements ModInitializer {
 				FiniteChunkGenerator.CODEC
 		);
 
+		dev.lemma.finiteworlds.worldgen.TemperateBiomeVariants.register();
+
 		LOGGER.info(
 				"Finite Worlds initialized."
 		);
