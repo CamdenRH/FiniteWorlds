@@ -749,6 +749,12 @@ public final class PreviewWriter {
                 world,
                 directory
         );
+
+        BiomeMappingPreviewWriter.writeAll(
+                world,
+                directory
+        );
+
     }
 
     private static void writeLandMask(

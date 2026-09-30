@@ -4,6 +4,10 @@ import dev.lemma.finiteworlds.core.SeedUtil;
 import dev.lemma.finiteworlds.core.WorldBlueprint;
 import dev.lemma.finiteworlds.core.noise.ValueNoise;
 
+import java.util.Collections;
+import java.util.Map;
+import java.util.WeakHashMap;
+
 /**
  * COAST2: physical shoreline / beach morphology.
  *
@@ -16,6 +20,17 @@ import dev.lemma.finiteworlds.core.noise.ValueNoise;
  * treatment, and vegetation remain deferred to biome/surface mapping.
  */
 public final class CoastalMorphologyPlanner {
+
+    /*
+     * Keep the exact authored COAST2 suitability fields associated with the
+     * generated blueprint. 3G.1 consumes these fields instead of assuming that
+     * every low cell near the ocean is a beach. Weak keys keep preview/world
+     * generation runs from accumulating stale blueprints.
+     */
+    private static final Map<WorldBlueprint, CoastalMorphologyState> STATES =
+            Collections.synchronizedMap(
+                    new WeakHashMap<>()
+            );
 
     private static final double SEA_LEVEL =
             64.0;
@@ -79,6 +94,52 @@ public final class CoastalMorphologyPlanner {
         );
     }
 
+    public static double beachStrength(
+            WorldBlueprint world,
+            int x,
+            int z
+    ) {
+        CoastalMorphologyState state =
+                STATES.get(world);
+
+        if (
+                state == null
+                        || !state.inside(x, z)
+        ) {
+            return 0.0;
+        }
+
+        return state.beachStrength()[
+                state.index(x, z)
+                ];
+    }
+
+    public static double headlandStrength(
+            WorldBlueprint world,
+            int x,
+            int z
+    ) {
+        CoastalMorphologyState state =
+                STATES.get(world);
+
+        if (
+                state == null
+                        || !state.inside(x, z)
+        ) {
+            return 0.0;
+        }
+
+        return state.headlandStrength()[
+                state.index(x, z)
+                ];
+    }
+
+    public static boolean hasMorphologyState(
+            WorldBlueprint world
+    ) {
+        return STATES.containsKey(world);
+    }
+
     private void applyTo(
             WorldBlueprint world
     ) {
@@ -90,6 +151,12 @@ public final class CoastalMorphologyPlanner {
 
         double[] sourceElevation =
                 new double[cellCount];
+
+        float[] beachStrength =
+                new float[cellCount];
+
+        float[] headlandStrength =
+                new float[cellCount];
 
         for (int z = 0; z < size; z++) {
             for (int x = 0; x < size; x++) {
@@ -175,23 +242,6 @@ public final class CoastalMorphologyPlanner {
                     continue;
                 }
 
-                /*
-                 * Smooth/gentle existing coasts are natural candidates for a
-                 * beach or gravel bench. Steep cells are protected so existing
-                 * cliffs and dramatic headlands survive.
-                 */
-                double slopeSuitability =
-                        1.0
-                                - smoothstep(
-                                0.035,
-                                0.145,
-                                localGrade
-                        );
-
-                if (slopeSuitability <= 0.0) {
-                    continue;
-                }
-
                 double nx =
                         ((x + 0.5) / size)
                                 * 4.0
@@ -203,38 +253,10 @@ public final class CoastalMorphologyPlanner {
                                 - 2.0;
 
                 /*
-                 * Broad seeded beach pockets keep the shore from becoming a
-                 * continuous engineered strip. The field varies slowly enough
-                 * that individual beaches are coherent rather than speckled.
-                 */
-                double pocketNoise =
-                        clamp01(
-                                beachPocketNoise.fbm(
-                                        nx * 2.20 + 19.0,
-                                        nz * 2.20 - 37.0,
-                                        4,
-                                        2.0,
-                                        0.52
-                                ) * 0.5
-                                        + 0.5
-                        );
-
-                double pocketStrength =
-                        smoothstep(
-                                0.36,
-                                0.62,
-                                pocketNoise
-                        );
-
-                if (pocketStrength <= 0.0) {
-                    continue;
-                }
-
-                /*
-                 * A second, somewhat finer field reserves irregular rocky
-                 * interruptions. COAST_RANGE terrain gets stronger protection
-                 * so the western massif can still produce isolated Olympic /
-                 * Na-Pali-like ocean contacts.
+                 * A somewhat finer field reserves irregular rocky
+                 * interruptions. Record this before beach eligibility is
+                 * tested so 3G.1 can distinguish a protected rocky headland
+                 * from an ordinary coast that simply received no beach cut.
                  */
                 double headlandNoise =
                         clamp01(
@@ -285,6 +307,61 @@ public final class CoastalMorphologyPlanner {
                                 )
                         );
 
+                int cellIndex =
+                        index(
+                                x,
+                                z,
+                                size
+                        );
+
+                headlandStrength[cellIndex] =
+                        (float) headlandProtection;
+
+                /*
+                 * Smooth/gentle existing coasts are natural candidates for a
+                 * beach or gravel bench. Steep cells are protected so existing
+                 * cliffs and dramatic headlands survive.
+                 */
+                double slopeSuitability =
+                        1.0
+                                - smoothstep(
+                                0.035,
+                                0.145,
+                                localGrade
+                        );
+
+                if (slopeSuitability <= 0.0) {
+                    continue;
+                }
+
+                /*
+                 * Broad seeded beach pockets keep the shore from becoming a
+                 * continuous engineered strip. The field varies slowly enough
+                 * that individual beaches are coherent rather than speckled.
+                 */
+                double pocketNoise =
+                        clamp01(
+                                beachPocketNoise.fbm(
+                                        nx * 2.20 + 19.0,
+                                        nz * 2.20 - 37.0,
+                                        4,
+                                        2.0,
+                                        0.52
+                                ) * 0.5
+                                        + 0.5
+                        );
+
+                double pocketStrength =
+                        smoothstep(
+                                0.36,
+                                0.62,
+                                pocketNoise
+                        );
+
+                if (pocketStrength <= 0.0) {
+                    continue;
+                }
+
                 /*
                  * Fade the authored shore profile out before the inner edge of
                  * the bench. This avoids an abrupt contour at benchWidth.
@@ -309,6 +386,9 @@ public final class CoastalMorphologyPlanner {
                                                 * 0.92
                                 )
                         );
+
+                beachStrength[cellIndex] =
+                        (float) strength;
 
                 if (strength <= 0.02) {
                     continue;
@@ -374,6 +454,15 @@ public final class CoastalMorphologyPlanner {
                 );
             }
         }
+
+        STATES.put(
+                world,
+                new CoastalMorphologyState(
+                        size,
+                        beachStrength,
+                        headlandStrength
+                )
+        );
     }
 
     private static double localGrade(
@@ -538,5 +627,28 @@ public final class CoastalMorphologyPlanner {
                         value
                 )
         );
+    }
+
+    private record CoastalMorphologyState(
+            int resolution,
+            float[] beachStrength,
+            float[] headlandStrength
+    ) {
+        private boolean inside(
+                int x,
+                int z
+        ) {
+            return x >= 0
+                    && x < resolution
+                    && z >= 0
+                    && z < resolution;
+        }
+
+        private int index(
+                int x,
+                int z
+        ) {
+            return z * resolution + x;
+        }
     }
 }

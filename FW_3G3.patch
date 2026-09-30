@@ -1,0 +1,35 @@
+diff --git a/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/biome/BiomeIntentPlanner.java b/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/biome/BiomeIntentPlanner.java
+index 00d96aa..79f8c4e 100644
+--- a/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/biome/BiomeIntentPlanner.java
++++ b/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/biome/BiomeIntentPlanner.java
+@@ -25,6 +25,10 @@ import dev.lemma.finiteworlds.core.geography.TerrainProvince;
+  * 3G.2 tightens beach intent to the stronger cores of those authored pockets
+  * and raises the frozen-cliff grade threshold so some gentler permanent-snow
+  * terrain resolves as snowfield rather than nearly all becoming cliff.
++ *
++ * 3G.3 performs the final shoreline/snow split polish: explicit beach intent
++ * is limited to the strongest COAST2 pocket cores, while frozen-cliff intent
++ * is reserved for genuinely steep permanent-snow terrain.
+  */
+ public final class BiomeIntentPlanner {
+
+@@ -243,7 +247,7 @@ public final class BiomeIntentPlanner {
+                         || province == TerrainProvince.CASCADE_CORE;
+
+         boolean authoredBeach =
+-                beachStrength >= 0.30
++                beachStrength >= 0.44
+                         && coastDistance <= coastalBiomeWidth
+                         && elevation <= SEA_LEVEL + 28.0;
+
+@@ -295,8 +299,8 @@ public final class BiomeIntentPlanner {
+             case PERMANENT_SNOW -> {
+                 double frozenCliffThreshold =
+                         province == TerrainProvince.CASCADE_CORE
+-                                ? 0.160
+-                                : 0.180;
++                                ? 0.190
++                                : 0.215;
+
+                 if (grade >= frozenCliffThreshold) {
+                     yield BiomeIntent.FROZEN_CLIFFS;
