@@ -660,6 +660,95 @@ public final class PreviewWriter {
                         "hydrology-river-final-relief.png"
                 )
         );
+
+        writeClimateTemperature(
+                world,
+                directory.resolve(
+                        "climate-temperature.png"
+                ),
+                false
+        );
+
+        writeClimateTemperature(
+                world,
+                directory.resolve(
+                        "climate-temperature-relief.png"
+                ),
+                true
+        );
+
+        writeClimateMoistureSource(
+                world,
+                directory.resolve(
+                        "climate-moisture-source.png"
+                )
+        );
+
+        writeClimateMoistureTransport(
+                world,
+                directory.resolve(
+                        "climate-moisture-transport.png"
+                )
+        );
+
+        writeClimatePrevailingWind(
+                world,
+                directory.resolve(
+                        "climate-prevailing-wind.png"
+                )
+        );
+
+        writeClimateOrographicLift(
+                world,
+                directory.resolve(
+                        "climate-orographic-lift.png"
+                )
+        );
+
+        writeClimatePrecipitation(
+                world,
+                directory.resolve(
+                        "climate-precipitation.png"
+                )
+        );
+
+        writeClimatePostOrographicMoisture(
+                world,
+                directory.resolve(
+                        "climate-post-orographic-moisture.png"
+                )
+        );
+
+        writeClimateRainShadow(
+                world,
+                directory.resolve(
+                        "climate-rain-shadow.png"
+                )
+        );
+
+        writeClimateRefinedPrecipitation(
+                world,
+                directory.resolve(
+                        "climate-refined-precipitation.png"
+                )
+        );
+
+        writeClimateRefinedMoisture(
+                world,
+                directory.resolve(
+                        "climate-refined-moisture.png"
+                )
+        );
+
+        RunoffDischargePreviewWriter.writeAll(
+                world,
+                directory
+        );
+
+        BioclimaticRegionPreviewWriter.writeAll(
+                world,
+                directory
+        );
     }
 
     private static void writeLandMask(
@@ -7905,6 +7994,793 @@ public final class PreviewWriter {
         ImageIO.write(image, "PNG", path.toFile());
     }
 
+
+    private static void writeClimateTemperature(
+            WorldBlueprint world,
+            Path path,
+            boolean reliefBackground
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                double temperature =
+                        world.climate()
+                                .temperatureCelsius(x, z);
+
+                int climateColor =
+                        temperatureColor(
+                                temperature
+                        );
+
+                if (
+                        !reliefBackground
+                                || world.landMask(x, z) < 0.5f
+                ) {
+                    image.setRGB(
+                            x,
+                            z,
+                            climateColor
+                    );
+
+                    continue;
+                }
+
+                int west =
+                        Math.max(0, x - 1);
+
+                int east =
+                        Math.min(size - 1, x + 1);
+
+                int north =
+                        Math.max(0, z - 1);
+
+                int south =
+                        Math.min(size - 1, z + 1);
+
+                double dx =
+                        world.elevation(east, z)
+                                - world.elevation(west, z);
+
+                double dz =
+                        world.elevation(x, south)
+                                - world.elevation(x, north);
+
+                double relief =
+                        clamp01(
+                                0.52
+                                        - dx * 0.0032
+                                        - dz * 0.0032
+                        );
+
+                int red =
+                        (climateColor >> 16) & 0xFF;
+
+                int green =
+                        (climateColor >> 8) & 0xFF;
+
+                int blue =
+                        climateColor & 0xFF;
+
+                double shade =
+                        0.62
+                                + 0.58 * relief;
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(
+                                clamp255(red * shade),
+                                clamp255(green * shade),
+                                clamp255(blue * shade)
+                        )
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static int temperatureColor(
+            double temperatureCelsius
+    ) {
+        /*
+         * Fixed physical scale rather than per-seed normalization. This makes
+         * the same color directly comparable across all generated seeds.
+         */
+        double normalized =
+                clamp01(
+                        (temperatureCelsius + 18.0)
+                                / 36.0
+                );
+
+        if (normalized < 0.25) {
+            double t =
+                    normalized / 0.25;
+
+            return rgb(
+                    clamp255(28.0 + 22.0 * t),
+                    clamp255(48.0 + 112.0 * t),
+                    clamp255(138.0 + 105.0 * t)
+            );
+        }
+
+        if (normalized < 0.50) {
+            double t =
+                    (normalized - 0.25) / 0.25;
+
+            return rgb(
+                    clamp255(50.0 + 70.0 * t),
+                    clamp255(160.0 + 62.0 * t),
+                    clamp255(243.0 - 83.0 * t)
+            );
+        }
+
+        if (normalized < 0.75) {
+            double t =
+                    (normalized - 0.50) / 0.25;
+
+            return rgb(
+                    clamp255(120.0 + 118.0 * t),
+                    clamp255(222.0 + 12.0 * t),
+                    clamp255(160.0 - 105.0 * t)
+            );
+        }
+
+        double t =
+                (normalized - 0.75) / 0.25;
+
+        return rgb(
+                clamp255(238.0 + 17.0 * t),
+                clamp255(234.0 - 154.0 * t),
+                clamp255(55.0 - 25.0 * t)
+        );
+    }
+
+
+    private static void writeClimateMoistureSource(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                double source =
+                        clamp01(
+                                world.climate()
+                                        .moistureSource(x, z)
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(
+                                clamp255(10.0 + 35.0 * source),
+                                clamp255(18.0 + 150.0 * source),
+                                clamp255(28.0 + 220.0 * source)
+                        )
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeClimateMoistureTransport(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                double moisture =
+                        clamp01(
+                                world.climate()
+                                        .transportedMoisture(x, z)
+                        );
+
+                int west =
+                        Math.max(0, x - 1);
+
+                int east =
+                        Math.min(size - 1, x + 1);
+
+                int north =
+                        Math.max(0, z - 1);
+
+                int south =
+                        Math.min(size - 1, z + 1);
+
+                double dx =
+                        world.elevation(east, z)
+                                - world.elevation(west, z);
+
+                double dz =
+                        world.elevation(x, south)
+                                - world.elevation(x, north);
+
+                double shade =
+                        Math.max(
+                                0.48,
+                                Math.min(
+                                        1.08,
+                                        0.76
+                                                - dx * 0.0018
+                                                - dz * 0.0018
+                                )
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(
+                                clamp255((18.0 + 45.0 * moisture) * shade),
+                                clamp255((30.0 + 155.0 * moisture) * shade),
+                                clamp255((42.0 + 205.0 * moisture) * shade)
+                        )
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeClimatePrevailingWind(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        Graphics2D graphics =
+                image.createGraphics();
+
+        graphics.setColor(
+                new Color(
+                        22,
+                        27,
+                        32
+                )
+        );
+
+        graphics.fillRect(
+                0,
+                0,
+                size,
+                size
+        );
+
+        int spacing =
+                Math.max(
+                        28,
+                        size / 24
+                );
+
+        int arrowLength =
+                Math.max(
+                        14,
+                        spacing / 2
+                );
+
+        graphics.setStroke(
+                new BasicStroke(
+                        Math.max(
+                                1.25f,
+                                size / 900.0f
+                        )
+                )
+        );
+
+        graphics.setColor(
+                new Color(
+                        90,
+                        205,
+                        245,
+                        225
+                )
+        );
+
+        for (int z = spacing / 2; z < size; z += spacing) {
+            for (int x = spacing / 2; x < size; x += spacing) {
+                double windX =
+                        world.climate()
+                                .windX(x, z);
+
+                double windZ =
+                        world.climate()
+                                .windZ(x, z);
+
+                double magnitude =
+                        Math.hypot(
+                                windX,
+                                windZ
+                        );
+
+                if (magnitude < 1.0e-6) {
+                    continue;
+                }
+
+                double ux =
+                        windX / magnitude;
+
+                double uz =
+                        windZ / magnitude;
+
+                int endX =
+                        (int) Math.round(
+                                x + ux * arrowLength
+                        );
+
+                int endZ =
+                        (int) Math.round(
+                                z + uz * arrowLength
+                        );
+
+                graphics.drawLine(
+                        x,
+                        z,
+                        endX,
+                        endZ
+                );
+
+                double leftX =
+                        endX
+                                - ux * 5.0
+                                + uz * 3.5;
+
+                double leftZ =
+                        endZ
+                                - uz * 5.0
+                                - ux * 3.5;
+
+                double rightX =
+                        endX
+                                - ux * 5.0
+                                - uz * 3.5;
+
+                double rightZ =
+                        endZ
+                                - uz * 5.0
+                                + ux * 3.5;
+
+                graphics.drawLine(
+                        endX,
+                        endZ,
+                        (int) Math.round(leftX),
+                        (int) Math.round(leftZ)
+                );
+
+                graphics.drawLine(
+                        endX,
+                        endZ,
+                        (int) Math.round(rightX),
+                        (int) Math.round(rightZ)
+                );
+            }
+        }
+
+        graphics.dispose();
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+    private static void writeClimateOrographicLift(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                double lift =
+                        clamp01(
+                                world.climate()
+                                        .orographicLift(x, z)
+                        );
+
+                int gray =
+                        clamp255(
+                                18.0 + lift * 237.0
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(gray, gray, gray)
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeClimatePrecipitation(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                if (world.landMask(x, z) < 0.5f) {
+                    image.setRGB(
+                            x,
+                            z,
+                            rgb(20, 45, 72)
+                    );
+                    continue;
+                }
+
+                double precipitation =
+                        clamp01(
+                                world.climate()
+                                        .orographicPrecipitation(x, z)
+                        );
+
+                double wet =
+                        Math.pow(
+                                precipitation,
+                                0.72
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(
+                                clamp255(128.0 - 88.0 * wet),
+                                clamp255(92.0 + 132.0 * wet),
+                                clamp255(48.0 + 166.0 * wet)
+                        )
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeClimatePostOrographicMoisture(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                double moisture =
+                        clamp01(
+                                world.climate()
+                                        .postOrographicMoisture(x, z)
+                        );
+
+                int west =
+                        Math.max(
+                                0,
+                                x - 1
+                        );
+
+                int east =
+                        Math.min(
+                                size - 1,
+                                x + 1
+                        );
+
+                int north =
+                        Math.max(
+                                0,
+                                z - 1
+                        );
+
+                int south =
+                        Math.min(
+                                size - 1,
+                                z + 1
+                        );
+
+                double dx =
+                        world.elevation(east, z)
+                                - world.elevation(west, z);
+
+                double dz =
+                        world.elevation(x, south)
+                                - world.elevation(x, north);
+
+                double relief =
+                        clamp01(
+                                0.52
+                                        - dx * 0.0032
+                                        - dz * 0.0032
+                        );
+
+                double shade =
+                        0.62
+                                + 0.58 * relief;
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(
+                                clamp255(
+                                        (18.0 + 45.0 * moisture)
+                                                * shade
+                                ),
+                                clamp255(
+                                        (30.0 + 155.0 * moisture)
+                                                * shade
+                                ),
+                                clamp255(
+                                        (42.0 + 205.0 * moisture)
+                                                * shade
+                                )
+                        )
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+    private static void writeClimateRainShadow(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                if (world.landMask(x, z) < 0.5f) {
+                    image.setRGB(
+                            x,
+                            z,
+                            rgb(14, 25, 38)
+                    );
+                    continue;
+                }
+
+                double shadow =
+                        clamp01(
+                                world.climate()
+                                        .rainShadowStrength(x, z)
+                        );
+
+                int value =
+                        clamp255(
+                                20.0
+                                        + 235.0 * shadow
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(
+                                value,
+                                value,
+                                value
+                        )
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeClimateRefinedPrecipitation(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                if (world.landMask(x, z) < 0.5f) {
+                    image.setRGB(
+                            x,
+                            z,
+                            rgb(20, 45, 72)
+                    );
+                    continue;
+                }
+
+                double precipitation =
+                        clamp01(
+                                world.climate()
+                                        .refinedPrecipitation(x, z)
+                        );
+
+                double wet =
+                        Math.pow(
+                                precipitation,
+                                0.72
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(
+                                clamp255(
+                                        128.0
+                                                - 88.0 * wet
+                                ),
+                                clamp255(
+                                        92.0
+                                                + 132.0 * wet
+                                ),
+                                clamp255(
+                                        48.0
+                                                + 166.0 * wet
+                                )
+                        )
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
+
+
+    private static void writeClimateRefinedMoisture(
+            WorldBlueprint world,
+            Path path
+    ) throws IOException {
+        int size =
+                world.resolution();
+
+        BufferedImage image =
+                new BufferedImage(
+                        size,
+                        size,
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                double moisture =
+                        clamp01(
+                                world.climate()
+                                        .refinedMoisture(x, z)
+                        );
+
+                image.setRGB(
+                        x,
+                        z,
+                        rgb(
+                                clamp255(
+                                        18.0
+                                                + 45.0 * moisture
+                                ),
+                                clamp255(
+                                        25.0
+                                                + 160.0 * moisture
+                                ),
+                                clamp255(
+                                        32.0
+                                                + 215.0 * moisture
+                                )
+                        )
+                );
+            }
+        }
+
+        ImageIO.write(
+                image,
+                "PNG",
+                path.toFile()
+        );
+    }
 
     private static BufferedImage hydrologyReliefBase(
             WorldBlueprint world

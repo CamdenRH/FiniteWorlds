@@ -1,0 +1,547 @@
+diff --git a/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/geography/CoastalMorphologyPlanner.java b/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/geography/CoastalMorphologyPlanner.java
+new file mode 100644
+--- /dev/null
++++ b/worldgen-core/src/main/java/dev/lemma/finiteworlds/core/geography/CoastalMorphologyPlanner.java
+@@ -0,0 +1,542 @@
++package dev.lemma.finiteworlds.core.geography;
++
++import dev.lemma.finiteworlds.core.SeedUtil;
++import dev.lemma.finiteworlds.core.WorldBlueprint;
++import dev.lemma.finiteworlds.core.noise.ValueNoise;
++
++/**
++ * COAST2: physical shoreline / beach morphology.
++ *
++ * This pass runs after the macro terrain and terrain provinces are complete,
++ * but before Hydrology Pass 1A copies the authored elevation into its working
++ * surface. The result is therefore automatically seen by drainage routing,
++ * stream extraction, valley planning, climate, and later biome mapping.
++ *
++ * The pass only shapes geometry. Sand, gravel, stone, biome identity, estuary
++ * treatment, and vegetation remain deferred to biome/surface mapping.
++ */
++public final class CoastalMorphologyPlanner {
++
++    private static final double SEA_LEVEL =
++            64.0;
++
++    /*
++     * Beach/bench target profile above sea level. These are intentionally
++     * conservative: the macro pass creates room for a real shore profile but
++     * does not attempt block-scale dunes or bars.
++     */
++    private static final double SHORE_RISE =
++            1.5;
++
++    private static final double BEACH_RISE =
++            6.0;
++
++    private static final double BENCH_RISE =
++            18.0;
++
++    /*
++     * Keep this pass predominantly erosional. A tiny amount of fill is allowed
++     * to smooth shallow coastal hollows, but the pass cannot build large
++     * artificial terraces upward.
++     */
++    private static final double MAXIMUM_CUT_BLOCKS =
++            72.0;
++
++    private static final double MAXIMUM_FILL_BLOCKS =
++            3.0;
++
++    private final ValueNoise beachPocketNoise;
++    private final ValueNoise rockyHeadlandNoise;
++
++    private CoastalMorphologyPlanner(
++            long worldSeed
++    ) {
++        this.beachPocketNoise =
++                new ValueNoise(
++                        SeedUtil.derive(
++                                worldSeed,
++                                "coastal-beach-pockets"
++                        )
++                );
++
++        this.rockyHeadlandNoise =
++                new ValueNoise(
++                        SeedUtil.derive(
++                                worldSeed,
++                                "coastal-rocky-headlands"
++                        )
++                );
++    }
++
++    public static void apply(
++            long worldSeed,
++            WorldBlueprint world
++    ) {
++        new CoastalMorphologyPlanner(
++                worldSeed
++        ).applyTo(
++                world
++        );
++    }
++
++    private void applyTo(
++            WorldBlueprint world
++    ) {
++        int size =
++                world.resolution();
++
++        int cellCount =
++                size * size;
++
++        double[] sourceElevation =
++                new double[cellCount];
++
++        for (int z = 0; z < size; z++) {
++            for (int x = 0; x < size; x++) {
++                sourceElevation[index(x, z, size)] =
++                        world.elevation(
++                                x,
++                                z
++                        );
++            }
++        }
++
++        double worldSize =
++                world.config()
++                        .worldSizeBlocks();
++
++        double blocksPerCell =
++                world.config()
++                        .blocksPerCell();
++
++        /*
++         * The active sand/gravel-scale beach is comparatively narrow. A wider
++         * coastal bench gives the terrain enough horizontal room to transition
++         * naturally into foothills without making a flat ring around the world.
++         */
++        double beachWidth =
++                worldSize * 0.0065;
++
++        double benchWidth =
++                worldSize * 0.0160;
++
++        for (int z = 0; z < size; z++) {
++            for (int x = 0; x < size; x++) {
++                if (
++                        world.landMask(x, z)
++                                < 0.5f
++                ) {
++                    continue;
++                }
++
++                double coastDistance =
++                        Math.max(
++                                0.0,
++                                world.coastDistance(
++                                        x,
++                                        z
++                                )
++                        );
++
++                if (coastDistance >= benchWidth) {
++                    continue;
++                }
++
++                double originalElevation =
++                        sourceElevation[
++                                index(
++                                        x,
++                                        z,
++                                        size
++                                )
++                                ];
++
++                double localGrade =
++                        localGrade(
++                                sourceElevation,
++                                x,
++                                z,
++                                size,
++                                blocksPerCell
++                        );
++
++                TerrainProvince province =
++                        world.terrainProvince(
++                                x,
++                                z
++                        );
++
++                double provinceSuitability =
++                        provinceSuitability(
++                                province
++                        );
++
++                if (provinceSuitability <= 0.0) {
++                    continue;
++                }
++
++                /*
++                 * Smooth/gentle existing coasts are natural candidates for a
++                 * beach or gravel bench. Steep cells are protected so existing
++                 * cliffs and dramatic headlands survive.
++                 */
++                double slopeSuitability =
++                        1.0
++                                - smoothstep(
++                                0.035,
++                                0.145,
++                                localGrade
++                        );
++
++                if (slopeSuitability <= 0.0) {
++                    continue;
++                }
++
++                double nx =
++                        ((x + 0.5) / size)
++                                * 4.0
++                                - 2.0;
++
++                double nz =
++                        ((z + 0.5) / size)
++                                * 4.0
++                                - 2.0;
++
++                /*
++                 * Broad seeded beach pockets keep the shore from becoming a
++                 * continuous engineered strip. The field varies slowly enough
++                 * that individual beaches are coherent rather than speckled.
++                 */
++                double pocketNoise =
++                        clamp01(
++                                beachPocketNoise.fbm(
++                                        nx * 2.20 + 19.0,
++                                        nz * 2.20 - 37.0,
++                                        4,
++                                        2.0,
++                                        0.52
++                                ) * 0.5
++                                        + 0.5
++                        );
++
++                double pocketStrength =
++                        smoothstep(
++                                0.36,
++                                0.62,
++                                pocketNoise
++                        );
++
++                if (pocketStrength <= 0.0) {
++                    continue;
++                }
++
++                /*
++                 * A second, somewhat finer field reserves irregular rocky
++                 * interruptions. COAST_RANGE terrain gets stronger protection
++                 * so the western massif can still produce isolated Olympic /
++                 * Na-Pali-like ocean contacts.
++                 */
++                double headlandNoise =
++                        clamp01(
++                                rockyHeadlandNoise.fbm(
++                                        nx * 4.60 - 53.0,
++                                        nz * 4.60 + 71.0,
++                                        3,
++                                        2.0,
++                                        0.52
++                                ) * 0.5
++                                        + 0.5
++                        );
++
++                double noisyHeadland =
++                        smoothstep(
++                                0.62,
++                                0.82,
++                                headlandNoise
++                        );
++
++                double steepHeadland =
++                        smoothstep(
++                                0.075,
++                                0.180,
++                                localGrade
++                        );
++
++                double provinceHeadland =
++                        province == TerrainProvince.COAST_RANGE
++                                ? 0.72
++                                : province == TerrainProvince.CASCADE_FOOTHILLS
++                                ? 0.40
++                                : 0.0;
++
++                double headlandProtection =
++                        clamp01(
++                                Math.max(
++                                        steepHeadland,
++                                        Math.max(
++                                                noisyHeadland
++                                                        * (
++                                                        0.55
++                                                                + provinceHeadland
++                                                ),
++                                                provinceHeadland
++                                                        * 0.60
++                                        )
++                                )
++                        );
++
++                /*
++                 * Fade the authored shore profile out before the inner edge of
++                 * the bench. This avoids an abrupt contour at benchWidth.
++                 */
++                double coastalBand =
++                        1.0
++                                - smoothstep(
++                                benchWidth * 0.72,
++                                benchWidth,
++                                coastDistance
++                        );
++
++                double strength =
++                        clamp01(
++                                coastalBand
++                                        * provinceSuitability
++                                        * slopeSuitability
++                                        * pocketStrength
++                                        * (
++                                        1.0
++                                                - headlandProtection
++                                                * 0.92
++                                )
++                        );
++
++                if (strength <= 0.02) {
++                    continue;
++                }
++
++                double beachProgress =
++                        smoothstep(
++                                0.0,
++                                beachWidth,
++                                coastDistance
++                        );
++
++                double benchProgress =
++                        smoothstep(
++                                beachWidth,
++                                benchWidth,
++                                coastDistance
++                        );
++
++                /*
++                 * A continuously rising shore profile:
++                 *
++                 * sea -> low beach -> higher coastal bench -> untouched inland
++                 *
++                 * The two smoothstep ramps avoid a hard horizontal terrace.
++                 */
++                double targetElevation =
++                        SEA_LEVEL
++                                + SHORE_RISE
++                                + BEACH_RISE
++                                * beachProgress
++                                + BENCH_RISE
++                                * benchProgress;
++
++                double desired =
++                        lerp(
++                                originalElevation,
++                                targetElevation,
++                                strength
++                        );
++
++                double minimumAllowed =
++                        originalElevation
++                                - MAXIMUM_CUT_BLOCKS
++                                * strength;
++
++                double maximumAllowed =
++                        originalElevation
++                                + MAXIMUM_FILL_BLOCKS
++                                * strength;
++
++                double adjusted =
++                        clamp(
++                                desired,
++                                minimumAllowed,
++                                maximumAllowed
++                        );
++
++                world.setElevation(
++                        x,
++                        z,
++                        (float) adjusted
++                );
++            }
++        }
++    }
++
++    private static double localGrade(
++            double[] elevation,
++            int x,
++            int z,
++            int size,
++            double blocksPerCell
++    ) {
++        int west =
++                Math.max(
++                        0,
++                        x - 1
++                );
++
++        int east =
++                Math.min(
++                        size - 1,
++                        x + 1
++                );
++
++        int north =
++                Math.max(
++                        0,
++                        z - 1
++                );
++
++        int south =
++                Math.min(
++                        size - 1,
++                        z + 1
++                );
++
++        double dx =
++                (
++                        elevation[index(east, z, size)]
++                                - elevation[index(west, z, size)]
++                )
++                        / Math.max(
++                        1.0,
++                        (east - west)
++                                * blocksPerCell
++                );
++
++        double dz =
++                (
++                        elevation[index(x, south, size)]
++                                - elevation[index(x, north, size)]
++                )
++                        / Math.max(
++                        1.0,
++                        (south - north)
++                                * blocksPerCell
++                );
++
++        return Math.hypot(
++                dx,
++                dz
++        );
++    }
++
++    private static double provinceSuitability(
++            TerrainProvince province
++    ) {
++        if (province == null) {
++            return 0.0;
++        }
++
++        return switch (province) {
++            case OCEAN ->
++                    0.0;
++
++            case COASTAL ->
++                    1.0;
++
++            case WESTERN_LOWLAND ->
++                    0.92;
++
++            case COAST_RANGE ->
++                    0.62;
++
++            case CASCADE_FOOTHILLS ->
++                    0.38;
++
++            case EASTERN_SLOPES ->
++                    0.28;
++
++            case INTERIOR_PLATEAU ->
++                    0.72;
++
++            case CASCADE_CORE ->
++                    0.08;
++        };
++    }
++
++    private static int index(
++            int x,
++            int z,
++            int size
++    ) {
++        return z * size + x;
++    }
++
++    private static double smoothstep(
++            double edge0,
++            double edge1,
++            double value
++    ) {
++        if (edge1 <= edge0) {
++            return value >= edge1
++                    ? 1.0
++                    : 0.0;
++        }
++
++        double t =
++                clamp01(
++                        (value - edge0)
++                                / (edge1 - edge0)
++                );
++
++        return t
++                * t
++                * (
++                3.0
++                        - 2.0
++                        * t
++        );
++    }
++
++    private static double lerp(
++            double a,
++            double b,
++            double t
++    ) {
++        return a
++                + (
++                b
++                        - a
++        )
++                * clamp01(t);
++    }
++
++    private static double clamp01(
++            double value
++    ) {
++        return clamp(
++                value,
++                0.0,
++                1.0
++        );
++    }
++
++    private static double clamp(
++            double value,
++            double minimum,
++            double maximum
++    ) {
++        return Math.max(
++                minimum,
++                Math.min(
++                        maximum,
++                        value
++                )
++        );
++    }
++}

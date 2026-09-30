@@ -165,11 +165,77 @@ public final class PhysiographySampler {
                 );
 
         /*
-         * Do not suppress the western range merely because it reaches
-         * the shoreline.  ContinentPlanner now decides whether this
-         * seed gets a detached inland massif or a coastal-contact
-         * massif.  The corridor itself is therefore the shoreline gate.
+         * Coastal-contact western ranges are still allowed, but their broad
+         * mountain body should not arrive at the waterline at full strength.
+         * Without an apron the outer corridor can turn an entire stretch of
+         * shoreline into one continuous wall.
+         *
+         * The first ~0.35% of world width stays strongly coastal, then the
+         * mountain body eases in over roughly the next 1.65%.  At production
+         * scale this leaves enough room for beaches, pocket coves, coastal
+         * benches, and lower foothills before the main massif rises.
          */
+        double coastalRangeApron =
+                smoothstep(
+                        worldSize * 0.0035,
+                        worldSize * 0.0200,
+                        coastDistance
+                );
+
+        /*
+         * Do not turn every coastal-contact range into a detached inland
+         * range.  A small number of narrow, high-confidence range cores may
+         * still punch through the apron as rocky headlands / mountain spires.
+         *
+         * A higher-frequency deterministic field breaks those contacts into
+         * short sections instead of recreating a continuous sea cliff.
+         */
+        double coastalHeadlandNoise =
+                clamp01(
+                        coastRangeNoise.fbm(
+                                nx * 7.0 + 31.0,
+                                nz * 7.0 - 17.0,
+                                3,
+                                2.0,
+                                0.52
+                        ) * 0.5 + 0.5
+                );
+
+        double coastalHeadlandCore =
+                smoothstep(
+                        0.78,
+                        0.96,
+                        westernRangeEnvelope
+                )
+                        * smoothstep(
+                        0.60,
+                        0.82,
+                        coastalHeadlandNoise
+                );
+
+        double shorelineContact =
+                1.0
+                        - smoothstep(
+                        worldSize * 0.0015,
+                        worldSize * 0.0100,
+                        coastDistance
+                );
+
+        /*
+         * Most shoreline cells retain only a small fraction of western-range
+         * influence.  Exceptional core/headland cells can retain up to ~45%,
+         * enough for dramatic ocean-facing spires without letting the whole
+         * massif form a sheer wall.
+         */
+        double shorelineRangeScale =
+                Math.max(
+                        0.10
+                                + 0.90
+                                * coastalRangeApron,
+                        coastalHeadlandCore
+                                * shorelineContact
+                                * 0.45
+                );
 
         double coastRangeVariation =
                 0.90
@@ -187,6 +253,7 @@ public final class PhysiographySampler {
                                 * westOfCascades
                                 * (1.0 - cascadeMask * 0.75)
                                 * coastRangeVariation
+                                * shorelineRangeScale
                 );
 
         double cascadeFoothillMask =

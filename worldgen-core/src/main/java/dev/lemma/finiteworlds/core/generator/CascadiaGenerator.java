@@ -12,8 +12,10 @@ import dev.lemma.finiteworlds.core.geography.ContinentPlanner;
 import dev.lemma.finiteworlds.core.geography.ContinentSampler;
 import dev.lemma.finiteworlds.core.geography.PhysiographySample;
 import dev.lemma.finiteworlds.core.geography.PhysiographySampler;
+import dev.lemma.finiteworlds.core.geography.CoastalMorphologyPlanner;
 
 import dev.lemma.finiteworlds.core.noise.ValueNoise;
+
 import dev.lemma.finiteworlds.core.hydrology.DepressionAnalyzer;
 import dev.lemma.finiteworlds.core.hydrology.FlowAccumulator;
 import dev.lemma.finiteworlds.core.hydrology.DrainageRouter;
@@ -36,6 +38,12 @@ import dev.lemma.finiteworlds.core.hydrology.RiverCarvingConstraintPlanner;
 import dev.lemma.finiteworlds.core.hydrology.RiverTerrainIntegrator;
 import dev.lemma.finiteworlds.core.hydrology.RiverChannelIntegrator;
 
+import dev.lemma.finiteworlds.core.climate.TemperaturePlanner;
+import dev.lemma.finiteworlds.core.climate.MoistureTransportPlanner;
+import dev.lemma.finiteworlds.core.climate.OrographicPrecipitationPlanner;
+import dev.lemma.finiteworlds.core.climate.RainShadowRefinementPlanner;
+import dev.lemma.finiteworlds.core.climate.RunoffDischargePlanner;
+import dev.lemma.finiteworlds.core.climate.BioclimaticRegionPlanner;
 
 public final class CascadiaGenerator {
 
@@ -278,6 +286,14 @@ public final class CascadiaGenerator {
             }
         }
 
+        /*
+         * COAST2 authors physical pocket beaches and coastal benches after
+         * macro terrain generation but before hydrology copies the final terrain.
+         */
+        CoastalMorphologyPlanner.apply(
+                seed,
+                blueprint
+        );
 
         /*
          * =====================================================
@@ -485,6 +501,30 @@ public final class CascadiaGenerator {
         );
 
         RiverChannelIntegrator.integrate(
+                blueprint
+        );
+
+        TemperaturePlanner.plan(
+                blueprint
+        );
+
+        MoistureTransportPlanner.plan(
+                blueprint
+        );
+
+        OrographicPrecipitationPlanner.plan(
+                blueprint
+        );
+
+        RainShadowRefinementPlanner.plan(
+                blueprint
+        );
+
+        RunoffDischargePlanner.plan(
+                blueprint
+        );
+
+        BioclimaticRegionPlanner.plan(
                 blueprint
         );
 
