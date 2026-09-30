@@ -1,0 +1,29 @@
+{
+  "minecraft": "1.21.8",
+  "java": "21",
+  "loader": "0.19.5",
+  "fabric_api": "0.136.1+1.21.8",
+  "terralith": "2.5.13",
+  "artifact": "finite-worlds-1.1.0.jar",
+  "sha256": "2e3efb492cd872126f09addf29b15906a3b903dc8df843c1b1e70b24b6ea96c6",
+  "bundled_core_sha256": "2dff87c57cbbd20b00b33f896d06fc0c074f15c73b04192244095cc03b8c7e88",
+  "terrain_phase_commit": "aeee4a8",
+  "core_tests": 17,
+  "minecraft_registry_tests": 1,
+  "audit_seeds": 14,
+  "wet_centerline_samples": 951341,
+  "client_results": {
+    "terralith": [
+      "CLIENT FOREST: position=(-5312,-22976) tree logs=874",
+      "CLIENT RANDOM: seed=6121171420949396051 terrain signature=337.000143",
+      "CLIENT RANDOM: seed=4813329988944158010 terrain signature=234.439992",
+      "BUILD SUCCESSFUL in 54s"
+    ],
+    "vanilla": [
+      "CLIENT FOREST: position=(-4544,-23232) tree logs=300",
+      "CLIENT RANDOM: seed=-5205288222672036931 terrain signature=201.287453",
+      "CLIENT RANDOM: seed=-6220078153476792555 terrain signature=229.499487",
+      "BUILD SUCCESSFUL in 52s"
+    ]
+  }
+}

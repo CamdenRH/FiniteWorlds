@@ -43,6 +43,7 @@ final class TerralithCompatibilityChecks {
             if(!(overworld.chunkGenerator() instanceof FiniteChunkGenerator generator))
                 throw new AssertionError("Terralith replaced the explicitly selected Finite generator");
             var source=(FiniteBiomeSource)generator.getBiomeSource();
+            BiomeReviewChecks.write(source);
             long terralithBiomes=source.getBiomes().stream().filter(b -> b.getKey().orElseThrow().getValue()
                 .getNamespace().equals("terralith")).count();
             if(terralithBiomes<10)throw new AssertionError("Real Terralith palette was not loaded: "+terralithBiomes);

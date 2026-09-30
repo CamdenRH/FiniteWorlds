@@ -1,0 +1,36 @@
+plugins {
+    id 'net.fabricmc.fabric-loom-remap' version '1.17-SNAPSHOT'
+}
+version = '1.0.0'
+repositories { mavenCentral() }
+def releaseJar = file(providers.gradleProperty('finiteJar').getOrElse('../../build/libs/finite-worlds-1.1.0.jar'))
+// Loom strips nested-JAR metadata from remapped development dependencies.
+// Load the exact bundled core bytes, not the producing project's classes.
+def nestedCore = file('build/release-dependencies/worldgen-core.jar')
+nestedCore.parentFile.mkdirs()
+new java.util.zip.ZipFile(releaseJar).withCloseable { zip ->
+    def nested = zip.entries().find { it.name.startsWith('META-INF/jars/worldgen-core-') && it.name.endsWith('.jar') }
+    if (nested == null) throw new GradleException('Release is missing its bundled terrain core')
+    zip.getInputStream(nested).withCloseable { input -> nestedCore.bytes = input.bytes }
+}
+dependencies {
+    minecraft 'com.mojang:minecraft:1.21.8'
+    mappings 'net.fabricmc:yarn:1.21.8+build.1:v2'
+    modImplementation 'net.fabricmc:fabric-loader:0.19.5'
+    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.136.1+1.21.8'
+    modImplementation files(releaseJar, nestedCore)
+    if (providers.gradleProperty('terralithJar').isPresent()) {
+        modLocalRuntime files(providers.gradleProperty('terralithJar').get())
+    }
+}
+java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }
+fabricApi.configureTests {
+    createSourceSet = true
+    modId = 'finite-worlds-client-tests'
+    enableGameTests = false
+    enableClientGameTests = true
+    clearRunDirectory = false
+}
+sourceSets.gametest.java.srcDir('../../src/gametest/java')
+sourceSets.gametest.resources.srcDir('../../src/gametest/resources')
+loom.runs.clientGameTest { vmArg '-Xmx4G' }

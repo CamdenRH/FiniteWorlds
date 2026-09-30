@@ -20,7 +20,11 @@ dependencies {
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
-	// FiniteWorlds Dependencies
+	if (providers.gradleProperty('terralithJar').isPresent()) {
+        modLocalRuntime files(providers.gradleProperty('terralithJar').get())
+    }
+
+    // FiniteWorlds Dependencies
 	implementation project(':worldgen-core')
 	include project(':worldgen-core')
 	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
@@ -62,6 +66,7 @@ test {
 	useJUnitPlatform()
 	maxHeapSize = '2G'
 	systemProperty 'finiteworlds.projectDir', projectDir.absolutePath
+    systemProperty 'finiteworlds.biomeReview', providers.gradleProperty('biomeReview').getOrElse('false')
 	if (providers.gradleProperty('terralithJar').isPresent()) {
 		def compatJar = file(providers.gradleProperty('terralithJar').get())
 		inputs.file(compatJar)
@@ -88,4 +93,16 @@ publishing {
 		// The repositories here will be used for publishing your artifact, not for
 		// retrieving dependencies.
 	}
+}
+
+// Isolated client smoke tests use separate saves and never enter the release JAR.
+fabricApi.configureTests {
+    createSourceSet = true
+    modId = 'finite-worlds-client-tests'
+    enableGameTests = false
+    enableClientGameTests = true
+    clearRunDirectory = false
+}
+loom.runs.clientGameTest {
+    vmArg '-Xmx4G'
 }

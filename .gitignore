@@ -41,3 +41,5 @@ replay_*.log
 
 # finite worlds generated previews
 worldgen-tools/preview/
+# Locally exported release binaries; manifests and notes are tracked.
+releases/**/*.jar

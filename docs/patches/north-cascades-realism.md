@@ -2,7 +2,7 @@
 
 Working branch: `codex/north-cascades-realism`. The editable IntelliJ project is `C:/Dev/FiniteWorlds`.
 Released 1.0.1 is preserved on main at `73a6e51`; staged terrain work was checkpointed at `acc0eb4`.
-Release candidate: 1.1.0 for Minecraft 1.21.8 / Fabric. Final JAR validation is recorded below.
+Release: 1.1.0 for Minecraft 1.21.8 / Fabric. Final JAR validation is recorded below.
 
 ## Reference terrain
 
@@ -69,10 +69,22 @@ Reviewed actual solid-surface maps, absolute-height profiles and unexaggerated i
 
 The exact Minecraft biome-source maps show curved ecological boundaries and distinct regional biome IDs. Their categorical colors mean biome identity only; terrain maps separately encode altitude and slope illumination. Legends and selected images are retained in `docs/terrain-review` rather than checking in every generated diagnostic.
 
-Phase 3 checkpoint: `1d2d20e`. Phase 4 checkpoint and final validation follow in the release record.
+Phase 3 checkpoint: `1d2d20e`. Phase 4 checkpoint: `aeee4a8`. Both are pushed to the working branch.
 
 ## Phase 5 — client and packaged release validation
 
-The isolated Fabric client test selects Cascadia in the actual world-creation screen, verifies the selected generator and Y1535 dimension ceiling, generates completed chunks including the Y1400+ summit, checks actual forest tree placement, and saves/reopens the world. Terralith 2.5.13 passed creation and reload while preserving Finite terrain; the forest sample contained 868 log blocks. The development test runs under `build/run/clientGameTest`, independently of Prism.
+The isolated Fabric client test selects Cascadia in the actual world-creation screen, verifies the selected generator and Y1535 dimension ceiling, generates completed chunks including the Y1400+ summit, checks actual forest tree placement, and saves/reopens the world. Terralith 2.5.13 passed creation and reload while preserving Finite terrain; the final packaged forest sample contained 874 log blocks. The development test runs under `build/run/clientGameTest`, independently of Prism.
 
 A fourteen-seed audit includes 0, positive and negative seeds, and both signed 64-bit extremes. It checks every planned channel center against physical terrain columns, lake ordering, routing connectivity and the summit reserve. Final metrics and packaged-client results are saved with the release review.
+
+## Release record — 1.1.0
+
+[Install notes and JAR checksum](../../releases/1.1.0/README.md). Local artifact: `C:/Dev/FiniteWorlds/releases/1.1.0/finite-worlds-1.1.0.jar`.
+
+The final build passed 17 core checks plus the Minecraft registry/codec bootstrap. The fourteen-seed physical audit sampled **951,341** channel center points: all wet, no measured downstream water rises, zero routed cycles/internal sinks, all summit samples at Y1432. The [full audit and visual limits](../terrain-review/phase-4/README.md) include residual near-bank diagnostics; this is not a proof that every water block remains unchanged under fluid ticking.
+
+The [packaged Minecraft client runs](../terrain-review/phase-5/README.md) passed with and without Terralith. Both created Cascadia worlds, completed summit/forest chunks, rendered terrain, saved/reopened and created two distinct blank-seed worlds. The consumer loads the final release JAR and its exact bundled core instead of compiled project classes. No Prism installation was changed.
+
+The [selected PNG evidence](../terrain-review/phase-4/README.md) is retained in Git with meaningful legends. The source project in `C:/Dev/FiniteWorlds` is current for IntelliJ; refresh Gradle after opening. All release work remains on `codex/north-cascades-realism`; main preserves the prior release. The phase 5 release checkpoint is the final commit on this branch.
+
+Create a **new Cascadia world** for testing. Existing generated terrain remains unchanged and may meet this version's terrain at chunk seams. This release stays within the North Cascades continent style; Hawaiian or New Zealand terrain types were not added.

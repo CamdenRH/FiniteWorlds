@@ -30,4 +30,3 @@ With Java 21, run from the repository root:
 ```
 
 Use the [official Terralith 2.5.13 release](https://modrinth.com/datapack/terralith/version/JKg71Gq0) for the optional biome review. Third-party biome assets are not copied into this repository or the Finite Worlds JAR.
-
