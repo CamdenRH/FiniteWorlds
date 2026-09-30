@@ -38,3 +38,10 @@ tasks.register('generateWorldPreview', JavaExec) {
             previewType
     )
 }
+tasks.register('auditTerrain', JavaExec) {
+    group = 'finite worlds'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'dev.lemma.finiteworlds.tools.TerrainAuditMain'
+    maxHeapSize = '2G'
+    args(providers.gradleProperty('seeds').getOrElse('12345,1,42,-987654321').split(','))
+}

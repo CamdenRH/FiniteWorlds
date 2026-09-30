@@ -1,0 +1,72 @@
+# Exact biome source review — seed 12345
+
+Color identifies a biome registry ID; brightness is constant. Overview: 65536 blocks at 85.33 blocks/pixel. Mountain crop: 8192 blocks at 8 blocks/pixel, centered (2466,-2082).
+
+| Biome | Overview samples |
+|---|---:|
+| finite-worlds:montane_forest | 0 |
+| finite-worlds:temperate/terralith/alpine_grove | 640 |
+| finite-worlds:temperate/terralith/alpine_highlands | 367 |
+| finite-worlds:temperate/terralith/birch_taiga | 369 |
+| finite-worlds:temperate/terralith/brushland | 0 |
+| finite-worlds:temperate/terralith/cloud_forest | 205 |
+| finite-worlds:temperate/terralith/cold_shrubland | 7881 |
+| finite-worlds:temperate/terralith/forested_highlands | 0 |
+| finite-worlds:temperate/terralith/frozen_cliffs | 4489 |
+| finite-worlds:temperate/terralith/glacial_chasm | 333 |
+| finite-worlds:temperate/terralith/granite_cliffs | 0 |
+| finite-worlds:temperate/terralith/gravel_beach | 0 |
+| finite-worlds:temperate/terralith/haze_mountain | 0 |
+| finite-worlds:temperate/terralith/highlands | 0 |
+| finite-worlds:temperate/terralith/lush_valley | 0 |
+| finite-worlds:temperate/terralith/rocky_mountains | 2622 |
+| finite-worlds:temperate/terralith/rocky_shrubland | 14366 |
+| finite-worlds:temperate/terralith/shield | 0 |
+| finite-worlds:temperate/terralith/shrubland | 0 |
+| finite-worlds:temperate/terralith/snowy_shield | 743 |
+| finite-worlds:temperate/terralith/steppe | 0 |
+| finite-worlds:temperate/terralith/stony_spires | 2722 |
+| finite-worlds:temperate/terralith/temperate_highlands | 341 |
+| finite-worlds:temperate/terralith/valley_clearing | 0 |
+| finite-worlds:temperate/terralith/wintry_forest | 1291 |
+| finite-worlds:temperate/terralith/wintry_lowlands | 8496 |
+| finite-worlds:temperate/terralith/yosemite_cliffs | 6337 |
+| finite-worlds:temperate/terralith/yosemite_lowlands | 72 |
+| finite-worlds:temperate_forest | 0 |
+| finite-worlds:temperate_rainforest | 0 |
+| finite-worlds:temperate_river | 25 |
+| finite-worlds:temperate_steppe | 0 |
+| minecraft:beach | 7195 |
+| minecraft:forest | 0 |
+| minecraft:ocean | 432965 |
+| minecraft:river | 898 |
+| minecraft:snowy_beach | 0 |
+| minecraft:stony_peaks | 0 |
+| minecraft:taiga | 0 |
+| terralith:alpine_grove | 0 |
+| terralith:alpine_highlands | 37 |
+| terralith:birch_taiga | 27 |
+| terralith:brushland | 17783 |
+| terralith:cloud_forest | 2774 |
+| terralith:cold_shrubland | 0 |
+| terralith:forested_highlands | 188 |
+| terralith:frozen_cliffs | 163 |
+| terralith:glacial_chasm | 1 |
+| terralith:granite_cliffs | 1410 |
+| terralith:gravel_beach | 1976 |
+| terralith:haze_mountain | 6558 |
+| terralith:highlands | 12437 |
+| terralith:lush_valley | 2972 |
+| terralith:rocky_mountains | 581 |
+| terralith:rocky_shrubland | 2490 |
+| terralith:shield | 561 |
+| terralith:shrubland | 9022 |
+| terralith:snowy_shield | 0 |
+| terralith:steppe | 19164 |
+| terralith:stony_spires | 551 |
+| terralith:temperate_highlands | 5402 |
+| terralith:valley_clearing | 11964 |
+| terralith:wintry_forest | 0 |
+| terralith:wintry_lowlands | 0 |
+| terralith:yosemite_cliffs | 1263 |
+| terralith:yosemite_lowlands | 143 |

@@ -4,6 +4,7 @@ import dev.lemma.finiteworlds.core.SeedUtil;
 import dev.lemma.finiteworlds.core.WorldBlueprint;
 import dev.lemma.finiteworlds.core.geography.TerrainProvince;
 import dev.lemma.finiteworlds.core.noise.ValueNoise;
+import dev.lemma.finiteworlds.core.terrain.LakeFootprintSampler;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -87,6 +88,8 @@ public final class RiverCenterlineSynthesizer {
 
         List<RiverSegmentCenterline> result =
                 new ArrayList<>(segments.size());
+
+        LakeFootprintSampler lakeFootprints=new LakeFootprintSampler(world,seed);
 
         for (RiverSegment segment : segments) {
             int segmentId =
@@ -184,6 +187,8 @@ public final class RiverCenterlineSynthesizer {
                             lateralOffsets
                     );
 
+            for(int lakePass=0;lakePass<2;lakePass++)
+                displaced=avoidForeignLakes(world,lakeFootprints,segment,gradePlan,profile,macroPoints,samples,displaced);
             double centerlineLength =
                     polylineLength(displaced);
 
@@ -206,11 +211,11 @@ public final class RiverCenterlineSynthesizer {
                 Vec2 point =
                         displaced.get(i);
 
-                double t =
-                        centerlineLength <= 1.0e-9
-                                ? 0.0
-                                : centerlineDistances[i]
-                                / centerlineLength;
+                // A constrained bend stretches the physical path, not the
+                // hydrologic progress of its bed. Reparameterizing the grade
+                // after moving around a lake could lower a previously safe
+                // point and make it enter that lake at an incompatible level.
+                double t = samples.get(i).normalizedDistance();
 
                 t =
                         clamp01(t);
@@ -279,8 +284,82 @@ public final class RiverCenterlineSynthesizer {
         }
 
         hydrology.setRiverSegmentCenterlines(
-                result
+                RiverCollisionConstraintPlanner.constrain(world,seed,result)
         );
+    }
+
+    private static List<Vec2> avoidForeignLakes(WorldBlueprint world,LakeFootprintSampler lakes,
+            RiverSegment segment,RiverSegmentGradePlan grade,RiverSegmentProfile profile,List<Vec2> macro,List<SamplePoint> references,List<Vec2> points) {
+        var adjusted=new ArrayList<Vec2>(points);
+        var start=world.hydrology().riverNodes().get(segment.startNodeId());
+        var end=world.hydrology().riverNodes().get(segment.endNodeId());
+        double[] macroDistances=cumulativeDistances(macro);
+        for(int i=1;i<points.size()-1;i++) {
+            Vec2 point=points.get(i);
+            double fraction=references.get(i).normalizedDistance();
+            double water=interpolateGrade(grade,fraction)+Math.max(.55,
+                lerp(profile.smoothedStartDepthBlocks(),profile.smoothedEndDepthBlocks(),fraction)*.72);
+            water=Math.min(water,world.hydrology().riverNodeWaterCeiling(start.id()));
+            var lake=lakes.sample(point.x(),point.z());
+            if(clearOfForeignLake(lake,start,end,water))continue;
+            // Follow the smooth shoreline membership gradient away from a foreign
+            // reservoir. Sharing this sampler with physical water prevents a
+            // harmless-looking macro bend from entering a higher neighboring lake.
+            Vec2 guide=pointAlong(macro,macroDistances,fraction);
+            for(double amount=.75;amount>=0;amount-=.25) {
+                Vec2 candidate=new Vec2(lerp(guide.x(),point.x(),amount),lerp(guide.z(),point.z(),amount));
+                if(clearOfForeignLake(lakes.sample(candidate.x(),candidate.z()),start,end,water)) {
+                    point=candidate;break;
+                }
+            }
+            double x=point.x(),z=point.z();
+            for(int attempt=0;attempt<80 && !clearOfForeignLake(lakes.sample(x,z),start,end,water);attempt++) {
+                double gx=lakeSupport(lakes,x+8,z)-lakeSupport(lakes,x-8,z);
+                double gz=lakeSupport(lakes,x,z+8)-lakeSupport(lakes,x,z-8);
+                double length=Math.hypot(gx,gz);
+                if(length<1e-5) {
+                    gx=x-point.x()+.3;gz=z-point.z()+.7;length=Math.hypot(gx,gz);
+                }
+                x-=gx/length*8;z-=gz/length*8;
+                if(clearOfForeignLake(lakes.sample(x,z),start,end,water))break;
+            }
+            if(!clearOfForeignLake(lakes.sample(x,z),start,end,water)) {
+                // A membership gradient can stall inside a broad flat lake or
+                // oscillate between neighboring lake IDs. Find a reachable
+                // shore globally, preferring continuity with the upstream bend.
+                Vec2 safe=null;double best=Double.POSITIVE_INFINITY;
+                for(int radius=16;radius<=768 && safe==null;radius+=16) {
+                    for(int angle=0;angle<32;angle++) {
+                        double radians=angle*Math.PI/16;
+                        Vec2 candidate=new Vec2(point.x()+radius*Math.cos(radians),point.z()+radius*Math.sin(radians));
+                        if(!clearOfForeignLake(lakes.sample(candidate.x(),candidate.z()),start,end,water))continue;
+                        double score=distanceSquared(candidate,guide)+.35*distanceSquared(candidate,adjusted.get(i-1));
+                        if(score<best){best=score;safe=candidate;}
+                    }
+                }
+                if(safe!=null){x=safe.x();z=safe.z();}
+            }
+            adjusted.set(i,new Vec2(x,z));
+        }
+        return adjusted;
+    }
+    private static Vec2 pointAlong(List<Vec2> points,double[] distances,double fraction) {
+        double distance=fraction*distances[distances.length-1];
+        int found=java.util.Arrays.binarySearch(distances,distance);
+        int upper=found>=0?found:Math.min(distances.length-1,-found-1);
+        int lower=Math.max(0,upper-1);
+        double t=(distance-distances[lower])/Math.max(1e-6,distances[upper]-distances[lower]);
+        return new Vec2(lerp(points.get(lower).x(),points.get(upper).x(),t),
+            lerp(points.get(lower).z(),points.get(upper).z(),t));
+    }
+    private static double lakeSupport(LakeFootprintSampler lakes,double x,double z) {
+        var lake=lakes.sample(x,z);return lake==null?0:lake.support();
+    }
+    private static boolean clearOfForeignLake(LakeFootprintSampler.Surface lake,RiverNode start,RiverNode end,double water) {
+        if(lake==null || lake.support()<.20)return true;
+        boolean connected=lake.id()==start.outletLakeId()||lake.id()==start.inletLakeId()
+            ||lake.id()==end.outletLakeId()||lake.id()==end.inletLakeId();
+        return connected && Math.abs(lake.water()-water)<.75;
     }
 
     private static RiverSegmentCenterline singlePointFallback(

@@ -67,6 +67,45 @@ public final class PhysicalWaterSamplingChecks {
     }
 
     @Test
+    public void aLakeFringeCannotUndoRaisedOutletBanks() {
+        WorldBlueprint world=flatWorld(110);
+        addRiver(world);
+        world.hydrology().setLakes(List.of(new Lake(0,LakeSourceType.SIMPLE_DEPRESSION,0,List.of(0),4,5,
+            155,150,5,5,10000,10000,200000,1,-1,-1,-1,-1,-1,-1,-1)));
+        world.hydrology().setLakeCell(4,5,0,5);
+        TerrainSampler sampler=new TerrainSampler(world,17);
+        var center=sampler.sampleColumn(0,0);
+        var bank=sampler.sampleColumn(0,10);
+        assertTrue(center.hasWater());
+        assertFalse(bank.hasWater());
+        assertTrue(bank.terrainElevation()>center.waterSurfaceElevation(),
+            "Weak lake shore support overwrote the physically raised river bank");
+    }
+
+    @Test
+    public void physicalEarlyMergesCannotRiseAgainDownstream() {
+        var world=flatWorld(350);
+        addRiver(world);
+        var crossing=new java.util.ArrayList<RiverCrossSectionPoint>();
+        for(int z:new int[]{-700,0,700})crossing.add(new RiverCrossSectionPoint(0,z,z+700,
+            RiverReachType.FOOTHILL,80,6,6,8,4,.8,.8,87,20,.1,.3,0));
+        var sections=new java.util.ArrayList<>(world.hydrology().riverSegmentCrossSections());
+        sections.add(new RiverSegmentCrossSection(1,false,crossing,8,6,.1));
+        world.hydrology().setRiverSegmentCrossSections(sections);
+        RiverWaterContinuityPlanner.condition(world,17);
+        var sampler=new TerrainSampler(world,17);
+        double previous=Double.POSITIVE_INFINITY;
+        for(int x=-690;x<=690;x++) {
+            var column=sampler.sampleColumn(x,0);
+            assertTrue(column.hasWater(),"Early merge dried the channel");
+            assertTrue(column.waterSurfaceElevation()<=previous+.001,"Water rose after an early physical merge");
+            previous=column.waterSurfaceElevation();
+        }
+        assertTrue(sampler.sampleColumn(650,0).waterSurfaceElevation()<90);
+        assertEquals(350,world.elevation(4,4),"Water planning modified the macro height grid");
+    }
+
+    @Test
     public void lakesUseTheirOwnLevelAndInterpolateShoreDepth() {
         WorldBlueprint world = flatWorld(350);
         HydrologyGrid hydrology = world.hydrology();
@@ -84,7 +123,7 @@ public final class PhysicalWaterSamplingChecks {
         assertTrue(center.hasWater());
         assertEquals(180, center.waterSurfaceElevation());
         assertEquals(160, center.terrainElevation());
-        TerrainColumn shallow = sampler.sampleColumn(-100, 128);
+        TerrainColumn shallow = sampler.sampleColumn(-64, 128);
         assertTrue(shallow.lake());
         assertEquals(180, shallow.waterSurfaceElevation());
         assertTrue(shallow.terrainElevation() > center.terrainElevation());

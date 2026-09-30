@@ -12,6 +12,22 @@ import java.util.List;
  * lake state, and erosion products without changing the terrain API.
  */
 public final class HydrologyGrid {
+    private List<RiverWaterSurfaceProfile> riverWaterSurfaceProfiles=List.of();
+    void setRiverWaterSurfaceProfiles(List<RiverWaterSurfaceProfile> profiles) {
+        riverWaterSurfaceProfiles=List.copyOf(profiles);
+    }
+    public RiverWaterSurfaceProfile riverWaterSurfaceProfile(int id) {
+        return id>=0&&id<riverWaterSurfaceProfiles.size()?riverWaterSurfaceProfiles.get(id):null;
+    }
+
+    private double[] riverNodeWaterCeilings=new double[0];
+    void setRiverNodeWaterCeilings(double[] ceilings) {
+        this.riverNodeWaterCeilings=Arrays.copyOf(ceilings,ceilings.length);
+    }
+    public double riverNodeWaterCeiling(int nodeId) {
+        return nodeId>=0 && nodeId<riverNodeWaterCeilings.length?riverNodeWaterCeilings[nodeId]:Double.POSITIVE_INFINITY;
+    }
+
 
     private final int resolution;
     private final double blocksPerCell;

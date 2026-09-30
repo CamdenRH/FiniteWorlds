@@ -2,13 +2,9 @@ package dev.lemma.finiteworlds.core.terrain;
 
 import dev.lemma.finiteworlds.core.WorldBlueprint;
 import dev.lemma.finiteworlds.core.hydrology.HydrologyGrid;
-import dev.lemma.finiteworlds.core.hydrology.Lake;
 import dev.lemma.finiteworlds.core.hydrology.RiverCrossSectionPoint;
 import dev.lemma.finiteworlds.core.hydrology.RiverSegmentCrossSection;
 import dev.lemma.finiteworlds.core.hydrology.RiverSegmentValleyCorridor;
-
-import dev.lemma.finiteworlds.core.SeedUtil;
-import dev.lemma.finiteworlds.core.noise.ValueNoise;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -25,12 +21,12 @@ final class HydrologicTerrainSampler {
     private static final double BUCKET_SIZE = 512.0;
     private static final double MAX_EDGE_LENGTH = 32.0;
     private final WorldBlueprint blueprint;
-    private final ValueNoise shorelineNoise;
+    private final LakeFootprintSampler lakeFootprints;
     private final Edge[] edges;
     private final Map<Long, int[]> buckets;
 
     HydrologicTerrainSampler(WorldBlueprint blueprint, long seed) {
-        this.shorelineNoise = new ValueNoise(SeedUtil.derive(seed, "lake-shoreline"));
+        this.lakeFootprints = new LakeFootprintSampler(blueprint,seed);
         this.blueprint = blueprint;
         HydrologyGrid hydrology = blueprint.hydrology();
         Map<Integer, RiverSegmentValleyCorridor> corridors = new HashMap<>();
@@ -44,7 +40,7 @@ final class HydrologicTerrainSampler {
                 continue;
             }
             List<RiverCrossSectionPoint> points = section.points();
-            double[] water = waterSurfaces(points);
+            double[] water = waterSurfaces(hydrology,section,points);
             RiverSegmentValleyCorridor corridor = corridors.get(section.segmentId());
             int from = 0;
             while (from < points.size() - 1) {
@@ -54,7 +50,7 @@ final class HydrologicTerrainSampler {
                 while (to < points.size() - 1
                         && points.get(to + 1).distanceBlocks() - points.get(from).distanceBlocks()
                         <= MAX_EDGE_LENGTH
-                        && chordDeviation(points, from, to + 1) <= 0.35) {
+                        && chordDeviation(points, from, to + 1) <= 1.0e-6) {
                     to++;
                 }
                 RiverCrossSectionPoint a = points.get(from);
@@ -90,6 +86,8 @@ final class HydrologicTerrainSampler {
         double water = Double.NaN;
         boolean river = false;
         double strongestInfluence = -1.0;
+        double wetBed = Double.POSITIVE_INFINITY;
+        double bankFloor = Double.NEGATIVE_INFINITY;
         int[] candidates = buckets.get(key(bucket(x), bucket(z)));
         if (candidates != null) {
             // Bucket entries are grouped by source segment. Only its closest
@@ -103,6 +101,7 @@ final class HydrologicTerrainSampler {
                 if (nearest != null && (edge == null || edge.segmentId != nearest.segmentId)) {
                     Influence influence = influence(nearest, nearestT, nearestDistance, x, z, terrainElevation);
                     if (influence != null) {
+                        bankFloor=Math.max(bankFloor,influence.bankFloor);
                         // The physical bed and banks replace the coarse carved grid.
                         // Otherwise a low macro corner can leave a dry trench below
                         // adjacent water, or an unrelated valley shoulder can cut
@@ -114,6 +113,7 @@ final class HydrologicTerrainSampler {
                         if (Double.isFinite(influence.water)) {
                             water = Double.isFinite(water) ? Math.min(water, influence.water) : influence.water;
                             river = true;
+                            wetBed=Math.min(wetBed,influence.elevation);
                         }
                     }
                     nearest = null;
@@ -136,19 +136,25 @@ final class HydrologicTerrainSampler {
             }
         }
 
+        if(river)terrain=Math.min(terrain,wetBed);
+        else terrain=Math.max(terrain,bankFloor);
         LakeInfluence lake = lakeAt(x, z);
         boolean lakeWater = false;
         if (lake != null) {
             double shoreline = lake.support < 0.45
-                    ? lerp(terrainElevation, lake.water + 1.0, smoothstep(0.0, 0.45, lake.support))
+                    ? lerp(terrain, lake.water + 1.0, smoothstep(0.0, 0.45, lake.support))
                     : lerp(lake.water + 1.0, lake.water - lake.depth, smoothstep(0.45, 0.55, lake.support));
-            terrain = Math.min(terrain, shoreline);
             lakeWater = lake.support >= 0.45 && Math.floor(shoreline) < Math.floor(lake.water);
+            // A lake owns its bed and dry shoreline; retaining a lower coarse
+            // corner outside the footprint would leave its water hanging above
+            // dry ground. Keep genuine inlet/outlet channels open at the fringe.
+            if(lakeWater || !river)terrain=shoreline;
             if (lakeWater) {
                 water = lake.water;
                 river = false;
             }
         }
+        if(!river && !lakeWater)terrain=Math.max(terrain,bankFloor);
         int seaLevel = blueprint.config().seaLevel();
         if (terrain < seaLevel) {
             water = Double.isFinite(water) ? Math.max(seaLevel, water) : seaLevel;
@@ -174,86 +180,34 @@ final class HydrologicTerrainSampler {
         double bank = Math.max(water + 0.8, bed + lerp(a.bankfullDepthBlocks(), b.bankfullDepthBlocks(), t));
         double inner = Math.max(width + 2.0, lerp(a.innerValleyHalfWidthBlocks(), b.innerValleyHalfWidthBlocks(), t));
         valley = Math.max(inner + 1.0, valley);
-        double floodplain = Math.max(bank, lerp(a.floodplainElevation(), b.floodplainElevation(), t));
+        double floodplain = Math.max(bank, bed+lerp(a.floodplainElevation()-a.plannedBedElevation(),
+                b.floodplainElevation()-b.plannedBedElevation(),t));
+        double dryBankFloor=distance<=width+32
+            ? lerp(bank,Math.min(bank,original),smoothstep(width+4,width+32,distance))
+            : Double.NEGATIVE_INFINITY;
         if (distance <= width) {
             double normalized = distance / width;
             double target = bed + (bank - bed) * normalized * normalized * normalized;
-            return new Influence(target, Math.floor(target) < Math.floor(water) ? water : Double.NaN, 3.0 - distance / width);
+            return new Influence(target, Math.floor(target) < Math.floor(water) ? water : Double.NaN, 3.0 - distance / width, dryBankFloor);
         }
         if (distance <= inner) {
             double target = lerp(bank, floodplain, smoothstep(width, inner, distance));
-            return new Influence(target, Double.NaN, 2.0 * (1.0 - smoothstep(width, valley, distance)));
+            return new Influence(target, Double.NaN, 2.0 * (1.0 - smoothstep(width, valley, distance)), dryBankFloor);
         }
         double target = lerp(floodplain, original, smoothstep(inner, valley, distance));
-        return new Influence(target, Double.NaN, 2.0 * (1.0 - smoothstep(width, valley, distance)));
+        return new Influence(target, Double.NaN, 2.0 * (1.0 - smoothstep(width, valley, distance)), dryBankFloor);
     }
 
-    private LakeInfluence lakeAt(double x, double z) {
-        HydrologyGrid hydrology = blueprint.hydrology();
-        if (hydrology.lakeCount() == 0) {
-            return null;
-        }
-        // Smooth coordinate distortion removes the underlying 64-block lattice
-        // from lake shores while preserving one coherent lake level and ID.
-        double unwarpedX=x, unwarpedZ=z;
-        x += 22 * shorelineNoise.fbm(unwarpedX/170,unwarpedZ/170,3,2,.5);
-        z += 22 * shorelineNoise.fbm(unwarpedX/170+37,unwarpedZ/170-51,3,2,.5);
-        double halfWorld = blueprint.config().worldSizeBlocks() / 2.0;
-        double px = (x + halfWorld) / blueprint.config().worldSizeBlocks() * (blueprint.resolution() - 1);
-        double pz = (z + halfWorld) / blueprint.config().worldSizeBlocks() * (blueprint.resolution() - 1);
-        if (px < 0.0 || pz < 0.0 || px > blueprint.resolution() - 1 || pz > blueprint.resolution() - 1) {
-            return null;
-        }
-        int x0 = (int) Math.floor(px);
-        int z0 = (int) Math.floor(pz);
-        double tx = px - x0;
-        double tz = pz - z0;
-        int bestId = -1;
-        double bestWeight = 0.0;
-        // Four corners, with repeated edge cells harmlessly summed.
-        for (int corner = 0; corner < 4; corner++) {
-            int cx = Math.min(x0 + (corner & 1), blueprint.resolution() - 1);
-            int cz = Math.min(z0 + (corner >> 1), blueprint.resolution() - 1);
-            int id = hydrology.lakeId(cx, cz);
-            if (id < 0) {
-                continue;
-            }
-            double support = 0.0;
-            for (int other = 0; other < 4; other++) {
-                int ox = Math.min(x0 + (other & 1), blueprint.resolution() - 1);
-                int oz = Math.min(z0 + (other >> 1), blueprint.resolution() - 1);
-                if (hydrology.lakeId(ox, oz) == id) {
-                    support += cornerWeight(other, tx, tz);
-                }
-            }
-            if (support > bestWeight) {
-                bestWeight = support;
-                bestId = id;
-            }
-        }
-        Lake lake = hydrology.lake(bestId);
-        if (lake == null || bestWeight <= 0.0) {
-            return null;
-        }
-        double depth = 0.0;
-        for (int corner = 0; corner < 4; corner++) {
-            int cx = Math.min(x0 + (corner & 1), blueprint.resolution() - 1);
-            int cz = Math.min(z0 + (corner >> 1), blueprint.resolution() - 1);
-            if (hydrology.lakeId(cx, cz) == bestId) {
-                depth += cornerWeight(corner, tx, tz) * hydrology.lakeDepth(cx, cz);
-            }
-        }
-        // Interpolate inundated depth and taper the edge into a beach rather
-        // than painting the lake footprint as a set of square macro cells.
-        depth *= smoothstep(0.45, 0.90, bestWeight);
-        return new LakeInfluence(lake.waterSurfaceElevation(), depth, bestWeight);
+    private LakeInfluence lakeAt(double x,double z) {
+        var surface=lakeFootprints.sample(x,z);
+        return surface==null?null:new LakeInfluence(surface.water(),surface.depth(),surface.support());
     }
 
     private static double cornerWeight(int corner, double tx, double tz) {
         return ((corner & 1) == 0 ? 1.0 - tx : tx) * ((corner >> 1) == 0 ? 1.0 - tz : tz);
     }
 
-    private static double[] waterSurfaces(List<RiverCrossSectionPoint> points) {
+    private double[] waterSurfaces(HydrologyGrid hydrology,RiverSegmentCrossSection section,List<RiverCrossSectionPoint> points) {
         double[] water = new double[points.size()];
         for (int i = 0; i < water.length; i++) {
             RiverCrossSectionPoint point = points.get(i);
@@ -266,6 +220,30 @@ final class HydrologicTerrainSampler {
             }
             water = next;
         }
+        if(section.segmentId()<hydrology.riverSegments().size()) {
+            var segment=hydrology.riverSegments().get(section.segmentId());
+            double startCeiling=hydrology.riverNodeWaterCeiling(segment.startNodeId());
+            double endCeiling=hydrology.riverNodeWaterCeiling(segment.endNodeId());
+            var startNode=hydrology.riverNodes().get(segment.startNodeId());
+            int lastSourceLake=-1;
+            if(startNode.outletLakeId()>=0) {
+                for(int i=0;i<points.size();i++) {
+                    var lake=lakeFootprints.sample(points.get(i).blockX(),points.get(i).blockZ());
+                    if(lake!=null && lake.id()==startNode.outletLakeId() && lake.support()>=.35)lastSourceLake=i;
+                }
+                double level=hydrology.lake(startNode.outletLakeId()).waterSurfaceElevation();
+                for(int i=0;i<=lastSourceLake;i++)water[i]=level;
+            }
+            for(int i=0;i<water.length;i++)water[i]=Math.min(water[i],startCeiling);
+            if(Double.isFinite(endCeiling)) {
+                double adjustment=Math.max(0,water[water.length-1]-endCeiling);
+                double endDistance=points.getLast().distanceBlocks();
+                for(int i=0;i<water.length;i++)water[i]-=adjustment*smoothstep(endDistance-128,endDistance,points.get(i).distanceBlocks());
+            }
+        }
+        var physical=hydrology.riverWaterSurfaceProfile(section.segmentId());
+        if(physical!=null && physical.size()==water.length)
+            for(int i=0;i<water.length;i++)water[i]=Math.min(water[i],physical.waterAt(i));
         for (int i = 1; i < water.length; i++) {
             water[i] = Math.min(water[i], water[i - 1]);
         }
@@ -323,7 +301,7 @@ final class HydrologicTerrainSampler {
                         double waterA, double waterB, double valleyA, double valleyB) {
     }
 
-    private record Influence(double elevation, double water, double strength) {
+    private record Influence(double elevation, double water, double strength, double bankFloor) {
     }
 
     private record LakeInfluence(double water, double depth, double support) {

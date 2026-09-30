@@ -38,6 +38,17 @@ public record Lake(
                 List.copyOf(sourceDepressionIds);
     }
 
+    /** Move the basin down without changing its footprint, depth or volume. */
+    public Lake lowerWaterSurfaceTo(double ceiling) {
+        float level=(float)Math.min(waterSurfaceElevation,ceiling);
+        if(level>=waterSurfaceElevation)return this;
+        float shift=waterSurfaceElevation-level;
+        return new Lake(id,sourceType,sourceId,sourceDepressionIds,footprintCellCount,catchmentCellCount,
+            level,minimumBedElevation-shift,maximumDepth,meanDepth,surfaceAreaBlocksSquared,
+            catchmentAreaBlocksSquared,estimatedVolumeBlocksCubed,suitabilityScore,outletX,outletZ,
+            outletTargetX,outletTargetZ,outletTargetDepressionId,outletTargetCompoundGroupId,downstreamLakeId);
+    }
+
     public boolean hasOutlet() {
         return outletX >= 0
                 && outletZ >= 0;

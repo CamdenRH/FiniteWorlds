@@ -462,6 +462,7 @@ public final class CascadiaGenerator {
         RiverGradePlanner.analyze(
                 blueprint
         );
+        dev.lemma.finiteworlds.core.hydrology.LakeConnectionLevelPlanner.plan(blueprint,seed);
 
         /*
          * Hydrology Pass 2G replaces the coarse D8 segment geometry with
@@ -494,6 +495,15 @@ public final class CascadiaGenerator {
         RiverCrossSectionPlanner.plan(
                 blueprint
         );
+        // At block resolution, nearby outlets can touch before their macro
+        // junction. Condition actual endpoint water and rebuild safe bends.
+        for(int pass=0;pass<2;pass++) {
+            if(!dev.lemma.finiteworlds.core.hydrology.RiverJunctionWaterPlanner.condition(blueprint,seed))break;
+            RiverCenterlineSynthesizer.synthesize(blueprint,seed);
+            RiverValleyCorridorPlanner.plan(blueprint);
+            RiverCrossSectionPlanner.plan(blueprint);
+        }
+
 
         /*
          * Hydrology Pass 2J converts the 2H/2I river geometry into explicit
@@ -542,6 +552,7 @@ public final class CascadiaGenerator {
                 blueprint
         );
 
+        dev.lemma.finiteworlds.core.hydrology.RiverWaterContinuityPlanner.condition(blueprint,seed);
         return blueprint;
     }
 

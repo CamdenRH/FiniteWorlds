@@ -28,6 +28,19 @@ public final class TerrainReviewWriter {
         double cx=peakX*span/(world.resolution()-1)-span/2;
         double cz=peakZ*span/(world.resolution()-1)-span/2;
         render(world,sampler,directory.resolve("review-mountains.png"),cx-4096,cz-4096,8192,1024);
+        int ridgeX=peakX,ridgeZ=peakZ;double ridgeHeight=-1;
+        for(int z=0;z<world.resolution();z++)for(int x=0;x<world.resolution();x++) {
+            double separation=Math.hypot(x-peakX,z-peakZ)*span/(world.resolution()-1);
+            if(separation>10000 && world.elevation(x,z)>ridgeHeight) {
+                ridgeHeight=world.elevation(x,z);ridgeX=x;ridgeZ=z;
+            }
+        }
+        double rx=ridgeX*span/(world.resolution()-1)-span/2;
+        double rz=ridgeZ*span/(world.resolution()-1)-span/2;
+        render(world,sampler,directory.resolve("review-cascades.png"),rx-4096,rz-4096,8192,1024);
+        perspective(sampler,directory.resolve("review-cascades-perspective.png"),rx-3072,rz-3072,6144);
+        perspective(sampler,directory.resolve("review-volcano-perspective.png"),cx-3072,cz-3072,6144);
+        profile(sampler,directory.resolve("review-cascade-profile.png"),rx-8192,rx+8192,rz);
         Files.writeString(directory.resolve("review-legend.md"), String.format(Locale.ROOT,
             "# Actual terrain review — seed %d%n%nThe overview covers %.0f blocks; each pixel samples %.2f blocks. " +
             "The mountain crop spans 8192 blocks at 8 blocks per pixel, centered at (%.0f, %.0f). " +
@@ -36,7 +49,7 @@ public final class TerrainReviewWriter {
             "gray 1000, pale gray 1250, white 1435. Brightness is northwest illumination of physical slopes, " +
             "not height. Blue is sampled ocean water; cyan is sampled river water; turquoise is sampled lake water. " +
             "No river strokes are enlarged: narrow streams may be subpixel on the overview. " +
-            "The cross-range profile uses the same block-column sampler.%n",seed,span,span/768,cx,cz));
+            "The cross-range profile uses the same block-column sampler. The ordinary Cascades crop is centered (%.0f, %.0f). Perspectives cover 6144 blocks on a 360-cell mesh with equal horizontal and vertical physical scales (no vertical exaggeration).%n",seed,span,span/768,cx,cz,rx,rz));
         profile(sampler,directory.resolve("review-cross-range.png"),cx-8192,cx+8192,cz);
     }
 
@@ -49,10 +62,10 @@ public final class TerrainReviewWriter {
         BufferedImage im=new BufferedImage(size,size+90,BufferedImage.TYPE_INT_RGB);
         for(int z=0;z<size;z++)for(int x=0;x<size;x++){
             TerrainColumn c=columns[z*size+x];
-            double dx=(columns[z*size+Math.min(size-1,x+1)].terrainElevation()-
-                columns[z*size+Math.max(0,x-1)].terrainElevation())/(2*spacing);
-            double dz=(columns[Math.min(size-1,z+1)*size+x].terrainElevation()-
-                columns[Math.max(0,z-1)*size+x].terrainElevation())/(2*spacing);
+            double dx=(visibleHeight(columns[z*size+Math.min(size-1,x+1)])-
+                visibleHeight(columns[z*size+Math.max(0,x-1)]))/(2*spacing);
+            double dz=(visibleHeight(columns[Math.min(size-1,z+1)*size+x])-
+                visibleHeight(columns[Math.max(0,z-1)*size+x]))/(2*spacing);
             double light=(.72+.46*(dx+dz))/Math.sqrt(1+dx*dx+dz*dz);
             double shade=Math.max(.30,Math.min(1.20,.45+light*.65));
             Color color=c.hasWater()?(c.lake()?new Color(35,161,165):c.river()?new Color(55,193,227):
@@ -69,6 +82,37 @@ public final class TerrainReviewWriter {
             g.setColor(Color.WHITE);g.drawString("Y "+(int)LEVELS[i],x,size+64);
         }
         g.dispose();ImageIO.write(im,"png",path.toFile());
+    }
+    private static void perspective(TerrainSampler sampler,Path path,double left,double top,double span)throws Exception {
+        int count=360,width=1500,height=1080;double spacing=span/count,scale=.115;
+        TerrainColumn[] columns=new TerrainColumn[(count+1)*(count+1)];
+        for(int z=0;z<=count;z++)for(int x=0;x<=count;x++)
+            columns[z*(count+1)+x]=sampler.sampleColumn(left+x*spacing,top+z*spacing);
+        BufferedImage image=new BufferedImage(width,height,BufferedImage.TYPE_INT_RGB);
+        Graphics2D g=image.createGraphics();g.setColor(new Color(224,235,241));g.fillRect(0,0,width,height);
+        for(int diagonal=0;diagonal<2*count;diagonal++)for(int x=Math.max(0,diagonal-count+1);x<=Math.min(count-1,diagonal);x++) {
+            int z=diagonal-x;int[] vx={x,x+1,x+1,x},vz={z,z,z+1,z+1};
+            int[] px=new int[4],py=new int[4];
+            for(int i=0;i<4;i++) {
+                TerrainColumn c=columns[vz[i]*(count+1)+vx[i]];
+                px[i]=(int)(width/2.0+(vx[i]-vz[i])*spacing*scale);
+                py[i]=(int)(230+(vx[i]+vz[i])*spacing*scale*.5-visibleHeight(c)*scale);
+            }
+            TerrainColumn c=columns[z*(count+1)+x];
+            double dx=(visibleHeight(columns[z*(count+1)+x+1])-visibleHeight(c))/spacing;
+            double dz=(visibleHeight(columns[(z+1)*(count+1)+x])-visibleHeight(c))/spacing;
+            double shade=Math.max(.35,Math.min(1.1,.70+.30*(dx+dz)/Math.sqrt(1+dx*dx+dz*dz)));
+            Color color=c.hasWater()?(c.lake()?new Color(35,161,165):new Color(55,193,227)):altitude(c.terrainElevation());
+            g.setColor(new Color((int)(color.getRed()*shade),(int)(color.getGreen()*shade),(int)(color.getBlue()*shade)));
+            g.fillPolygon(px,py,4);
+        }
+        g.setColor(Color.DARK_GRAY);g.setFont(new Font("SansSerif",Font.PLAIN,18));
+        g.drawString(String.format(Locale.ROOT,"Actual column terrain | %.0f × %.0f blocks | isometric view | no vertical exaggeration",span,span),25,height-50);
+        g.drawString(String.format(Locale.ROOT,"X %.0f to %.0f, Z %.0f to %.0f | same elevation hues and physical water as plan maps",left,left+span,top,top+span),25,height-22);
+        g.dispose();ImageIO.write(image,"png",path.toFile());
+    }
+    private static double visibleHeight(TerrainColumn column){
+        return column.hasWater()?column.waterSurfaceElevation():column.terrainElevation();
     }
     private static Color altitude(double height){
         if(height<=LEVELS[0])return COLORS[0];
