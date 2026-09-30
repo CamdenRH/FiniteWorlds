@@ -4,10 +4,8 @@
       "type": "finite-worlds:cascadia",
       "generator": {
         "type": "finite-worlds:finite",
-        "seed": 12345,
         "biome_source": {
-          "type": "minecraft:fixed",
-          "biome": "minecraft:plains"
+          "type": "finite-worlds:finite"
         }
       }
     },

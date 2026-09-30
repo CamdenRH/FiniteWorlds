@@ -6,6 +6,7 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import dev.lemma.finiteworlds.core.WorldBlueprint;
 import dev.lemma.finiteworlds.core.WorldConfig;
+import dev.lemma.finiteworlds.core.biome.BiomeIntent;
 import dev.lemma.finiteworlds.core.generator.CascadiaGenerator;
 import dev.lemma.finiteworlds.core.terrain.TerrainSampler;
 
@@ -29,9 +30,13 @@ import net.minecraft.world.gen.chunk.ChunkGenerator;
 import net.minecraft.world.gen.chunk.VerticalBlockSample;
 
 import net.minecraft.world.gen.noise.NoiseConfig;
+import net.minecraft.registry.RegistryWrapper;
+import net.minecraft.structure.StructureSet;
+import net.minecraft.world.gen.chunk.placement.StructurePlacementCalculator;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 public final class FiniteChunkGenerator
@@ -58,7 +63,7 @@ public final class FiniteChunkGenerator
      */
     public static final int DEVELOPMENT_TERRAIN_MIN_Y = -64;
 
-    private final TerrainSampler terrainSampler;
+    private volatile TerrainSampler terrainSampler;
 
     public static final MapCodec<FiniteChunkGenerator>
             CODEC =
@@ -72,13 +77,9 @@ public final class FiniteChunkGenerator
                                     ),
 
                             Codec.LONG
-                                    .optionalFieldOf(
-                                            "seed",
-                                            12345L
-                                    )
+                                    .optionalFieldOf("seed")
                                     .forGetter(
-                                            generator ->
-                                                    generator.seed
+                                            FiniteChunkGenerator::serializedSeed
                                     )
 
                     ).apply(
@@ -87,35 +88,68 @@ public final class FiniteChunkGenerator
                     )
             );
 
-    private final long seed;
-
-    private final WorldBlueprint blueprint;
+    private long seed;
+    private volatile boolean seedBound;
+    private final Optional<Long> configuredSeed;
 
     public FiniteChunkGenerator(
             BiomeSource biomeSource,
             long seed
     ) {
+        this(biomeSource, Optional.of(seed));
+    }
 
-        super(biomeSource);
+    private FiniteChunkGenerator(BiomeSource biomeSource, Optional<Long> configuredSeed) {
+        super(configuredSeed.isPresent() && biomeSource instanceof FiniteBiomeSource finite
+                ? finite.withSeed(configuredSeed.get()) : biomeSource);
+        this.seed = configuredSeed.orElse(0L);
+        this.seedBound = configuredSeed.isPresent();
+        this.configuredSeed = configuredSeed;
+    }
 
-        this.seed =
-                seed;
+    private Optional<Long> serializedSeed() {
+        // New worlds use Minecraft's saved GeneratorOptions seed. Keep their
+        // generator seed absent so Re-create World can select a different seed.
+        return configuredSeed;
+    }
 
-        WorldConfig config =
-                WorldConfig.production();
+    /** Minecraft calls this with ServerWorld.getSeed() before creating its generation context. */
+    @Override
+    public StructurePlacementCalculator createStructurePlacementCalculator(
+            RegistryWrapper<StructureSet> structures, NoiseConfig noiseConfig, long worldSeed) {
+        bindWorldSeed(worldSeed);
+        return super.createStructurePlacementCalculator(structures, noiseConfig, worldSeed);
+    }
 
-        this.blueprint =
-                new CascadiaGenerator()
-                        .generate(
-                                seed,
-                                config
-                        );
+    private synchronized void bindWorldSeed(long worldSeed) {
+        if (seedBound) {
+            // A serialized generator seed preserves already-created worlds.
+            return;
+        }
+        if (getBiomeSource() instanceof FiniteBiomeSource finite) {
+            finite.bindSeed(worldSeed);
+        }
+        seed = worldSeed;
+        seedBound = true;
+    }
 
-        this.terrainSampler =
-                new TerrainSampler(
-                        blueprint,
-                        seed
-                );
+    private TerrainSampler terrainSampler() {
+        if (!seedBound) {
+            throw new IllegalStateException("Finite Worlds has not received the saved world seed yet");
+        }
+        TerrainSampler result = terrainSampler;
+        if (result == null) {
+            synchronized (this) {
+                result = terrainSampler;
+                if (result == null) {
+                    WorldBlueprint blueprint = getBiomeSource() instanceof FiniteBiomeSource finite
+                            ? finite.blueprint()
+                            : new CascadiaGenerator().generate(seed, WorldConfig.production());
+                    terrainSampler = result = new TerrainSampler(blueprint, seed);
+                }
+            }
+        }
+        return result;
     }
 
     @Override
@@ -155,29 +189,15 @@ public final class FiniteChunkGenerator
                                 worldZ
                         );
 
+                BiomeIntent intent = surfaceIntent(worldX, worldZ);
+
                 for (
                         int y = DEVELOPMENT_TERRAIN_MIN_Y;
                         y <= height;
                         y++
                 ) {
 
-                    BlockState state;
-
-                    if (y == height) {
-                        state =
-                                Blocks.GRASS_BLOCK
-                                        .getDefaultState();
-
-                    } else if (y >= height - 3) {
-                        state =
-                                Blocks.DIRT
-                                        .getDefaultState();
-
-                    } else {
-                        state =
-                                Blocks.STONE
-                                        .getDefaultState();
-                    }
+                    BlockState state = CoastalSurfaceMaterials.stateAt(y, height, intent);
 
                     pos.set(
                             worldX,
@@ -251,17 +271,14 @@ public final class FiniteChunkGenerator
         int surface =
                 surfaceHeight(x, z);
 
+        BiomeIntent intent = surfaceIntent(x, z);
+
         for (
                 int y = DEVELOPMENT_TERRAIN_MIN_Y;
                 y <= surface;
                 y++
         ) {
-            states[y - MIN_Y] =
-                    y == surface
-                            ? Blocks.GRASS_BLOCK
-                            .getDefaultState()
-                            : Blocks.STONE
-                            .getDefaultState();
+            states[y - MIN_Y] = CoastalSurfaceMaterials.stateAt(y, surface, intent);
         }
 
         if (surface < SEA_LEVEL) {
@@ -288,7 +305,7 @@ public final class FiniteChunkGenerator
     ) {
 
         double elevation =
-                terrainSampler
+                terrainSampler()
                         .surfaceElevationAt(
                                 worldX,
                                 worldZ
@@ -308,6 +325,11 @@ public final class FiniteChunkGenerator
         );
     }
 
+    private BiomeIntent surfaceIntent(int x, int z) {
+        return getBiomeSource() instanceof FiniteBiomeSource finite
+                ? finite.intentAtBlock(x, z) : BiomeIntent.TEMPERATE_FOREST;
+    }
+
     @Override
     public void buildSurface(
             ChunkRegion region,
@@ -315,7 +337,7 @@ public final class FiniteChunkGenerator
             NoiseConfig noiseConfig,
             Chunk chunk
     ) {
-        // Surface already placed for prototype.
+        // Coastal and prototype inland layers are placed during populateNoise.
     }
 
     @Override
@@ -360,5 +382,6 @@ public final class FiniteChunkGenerator
         text.add(
                 "Finite Worlds generator"
         );
+        text.add("Finite Worlds seed=" + (seedBound ? Long.toString(seed) : "awaiting world seed"));
     }
 }
