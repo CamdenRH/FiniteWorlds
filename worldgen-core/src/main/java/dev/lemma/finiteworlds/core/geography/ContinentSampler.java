@@ -22,6 +22,7 @@ public final class ContinentSampler {
     private final ValueNoise mediumCoast;
     private final ValueNoise fineCoast;
     private final ValueNoise microCoast;
+    private final ValueNoise shoreRoughness;
 
 
     public ContinentSampler(
@@ -29,6 +30,7 @@ public final class ContinentSampler {
             ContinentPlan plan
     ) {
 
+        this.shoreRoughness = new ValueNoise(SeedUtil.derive(worldSeed, "coast-rocky-inlets"));
         this.plan =
                 plan;
 
@@ -320,7 +322,8 @@ public final class ContinentSampler {
                 + fine
                 * fineWeight
                 + micro
-                * microWeight;
+                * microWeight
+                + shoreRoughness.fbm(wx * 180.0, wz * 180.0, 3, 2.0, 0.5) * 0.0030 * microWeight;
     }
 
 

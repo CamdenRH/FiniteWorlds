@@ -144,7 +144,7 @@ public final class DepressionResolutionPlanner {
          * 64 blocks, so a lake candidate should have both measurable depth
          * and a multi-cell footprint.
          */
-        if (lakeScore >= 0.58) {
+        if (lakeScore >= 0.52) {
             return DepressionResolutionAction.PRESERVE_LAKE;
         }
 

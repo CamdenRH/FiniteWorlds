@@ -22,7 +22,7 @@ public final class LakePlanner {
             1.0e-4f;
 
     private static final double COMPOUND_LAKE_SCORE_THRESHOLD =
-            0.58;
+            0.52;
 
     private LakePlanner() {
     }

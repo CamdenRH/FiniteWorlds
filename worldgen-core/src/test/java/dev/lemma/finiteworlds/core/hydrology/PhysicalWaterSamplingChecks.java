@@ -52,6 +52,21 @@ public final class PhysicalWaterSamplingChecks {
     }
 
     @Test
+    public void coarseIncisionCannotLeaveDryBanksBelowTheRiver() {
+        WorldBlueprint world=flatWorld(110);
+        addRiver(world);
+        TerrainSampler sampler=new TerrainSampler(world,17);
+        TerrainColumn center=sampler.sampleColumn(0,0);
+        TerrainColumn bank=sampler.sampleColumn(0,10);
+        assertTrue(center.hasWater());
+        assertFalse(bank.hasWater());
+        assertTrue(bank.terrainElevation()>center.waterSurfaceElevation(),
+            "A coarse valley cut left the dry bank below adjacent water");
+        assertTrue(Math.abs(sampler.surfaceElevationAt(0,99)-sampler.surfaceElevationAt(0,101))<5,
+            "A filled bank ends abruptly at the valley edge");
+    }
+
+    @Test
     public void lakesUseTheirOwnLevelAndInterpolateShoreDepth() {
         WorldBlueprint world = flatWorld(350);
         HydrologyGrid hydrology = world.hydrology();

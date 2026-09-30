@@ -613,6 +613,8 @@ public final class PreviewMain {
                         Long.toString(seed)
                 );
 
+        TerrainReviewWriter.write(blueprint, seed, output);
+
         PreviewWriter.writeAll(
                 blueprint,
                 seed,

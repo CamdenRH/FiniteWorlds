@@ -24,7 +24,7 @@ public final class TerrainSampler {
                         blueprint
                 );
 
-        this.hydrologicTerrain = new HydrologicTerrainSampler(blueprint);
+        this.hydrologicTerrain = new HydrologicTerrainSampler(blueprint, worldSeed);
     }
 
     public double surfaceElevationAt(

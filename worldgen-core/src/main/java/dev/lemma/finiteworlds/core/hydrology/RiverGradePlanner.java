@@ -99,7 +99,7 @@ public final class RiverGradePlanner {
 
             TargetBedSamples samples =
                     buildTargetBedSamples(
-                            hydrology,
+                            world,
                             segment,
                             profile
                     );
@@ -173,7 +173,7 @@ public final class RiverGradePlanner {
 
             TargetBedSamples samples =
                     buildTargetBedSamples(
-                            hydrology,
+                            world,
                             segment,
                             profile
                     );
@@ -361,10 +361,11 @@ public final class RiverGradePlanner {
     }
 
     private static TargetBedSamples buildTargetBedSamples(
-            HydrologyGrid hydrology,
+            WorldBlueprint world,
             RiverSegment segment,
             RiverSegmentProfile profile
     ) {
+        HydrologyGrid hydrology = world.hydrology();
         int sampleCount =
                 segment.cellPath().size();
 
@@ -408,7 +409,7 @@ public final class RiverGradePlanner {
             target[i] =
                     (float) (
                             surface
-                                    - depth
+                                    - depth - CatchmentIncision.depthAt(world, segment, i, surface)
                     );
         }
 

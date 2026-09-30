@@ -35,13 +35,13 @@ public final class LocalTerrainSampler {
     }
 
     public double sample(double x, double z, double macroElevation) {
-        if (macroElevation >= 1450.0) {
+        if (macroElevation >= 1350.0) {
             return 0.0;
         }
         double mountainStrength = mountainStrength(x, z, macroElevation);
         // Keep the calibrated volcanic summit inside the height envelope. Its
         // upper cone and crater already have their own explicit morphology.
-        mountainStrength *= 1.0 - smoothstep(1200.0, 1450.0, macroElevation);
+        mountainStrength *= 1.0 - smoothstep(1200.0, 1350.0, macroElevation);
 
         double broad = broadNoise.fbm(x / 520.0, z / 520.0, 4, 2.0, 0.5) * 10.0;
         double hills = hillNoise.fbm(x / 180.0, z / 180.0, 4, 2.0, 0.5) * 6.0;
@@ -68,7 +68,7 @@ public final class LocalTerrainSampler {
 
         double coastProtection = smoothstep(3.0, 28.0, Math.abs(macroElevation - seaLevel));
         double terrainStrength = macroElevation >= seaLevel ? 1.0 : 0.35;
-        double summitProtection = 1.0 - smoothstep(1350.0, 1450.0, macroElevation);
+        double summitProtection = 1.0 - smoothstep(1250.0, 1350.0, macroElevation);
         return (broad + hills + fine + mountainRelief) * terrainStrength
                 * (0.20 + 0.80 * coastProtection) * summitProtection;
     }

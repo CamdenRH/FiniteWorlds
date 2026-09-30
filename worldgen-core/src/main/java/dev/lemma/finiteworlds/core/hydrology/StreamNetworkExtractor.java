@@ -272,13 +272,13 @@ public final class StreamNetworkExtractor {
 
         double base =
                 switch (province) {
-                    case CASCADE_CORE -> 24.0;
-                    case COAST_RANGE -> 28.0;
-                    case CASCADE_FOOTHILLS -> 34.0;
-                    case EASTERN_SLOPES -> 44.0;
-                    case COASTAL -> 50.0;
-                    case WESTERN_LOWLAND -> 58.0;
-                    case INTERIOR_PLATEAU -> 72.0;
+                    case CASCADE_CORE -> 140.0;
+                    case COAST_RANGE -> 200.0;
+                    case CASCADE_FOOTHILLS -> 190.0;
+                    case EASTERN_SLOPES -> 260.0;
+                    case COASTAL -> 280.0;
+                    case WESTERN_LOWLAND -> 320.0;
+                    case INTERIOR_PLATEAU -> 420.0;
                     case OCEAN -> Double.POSITIVE_INFINITY;
                 };
 
@@ -308,9 +308,9 @@ public final class StreamNetworkExtractor {
 
         return (int) Math.round(
                 clamp(
-                        base * slopeFactor,
-                        16.0,
-                        96.0
+                        base * slopeFactor / (0.65 + 0.85 * world.climate().refinedPrecipitation(x, z)),
+                        80.0,
+                        768.0
                 )
         );
     }

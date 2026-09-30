@@ -348,14 +348,14 @@ public final class RiverTerrainIntegrator {
                     }
 
                     /*
-                     * Keep 2K conservative. Even if overlapping valley samples
+                     * Respect the reach-specific incision budget. Even if overlapping samples
                      * collectively request an extreme change, the per-cell cap
-                     * prevents this first terrain pass from erasing authored
+                     * prevents extreme overlap from erasing authored
                      * relief. 2L still owns bankfull channel incision.
                      */
                     applied = clamp(
                             applied,
-                            -42.0,
+                            -220.0,
                             4.0
                     );
 

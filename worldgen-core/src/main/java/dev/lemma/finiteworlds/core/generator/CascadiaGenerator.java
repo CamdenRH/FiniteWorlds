@@ -290,6 +290,7 @@ public final class CascadiaGenerator {
             }
         }
 
+        dev.lemma.finiteworlds.core.geography.CascadeReliefPlanner.apply(seed, blueprint, volcanicUplift);
         LandmarkVolcanoHeightPlanner.apply(blueprint, volcanicUplift);
 
         /*
@@ -401,6 +402,13 @@ public final class CascadiaGenerator {
          * then remains continuous downstream. This is still diagnostic-only:
          * no terrain carving, final width assignment, or water placement.
          */
+        // Rainfall and snowmelt participate in channel initiation and erosion, not just diagnostics.
+        TemperaturePlanner.plan(blueprint);
+        MoistureTransportPlanner.plan(blueprint);
+        OrographicPrecipitationPlanner.plan(blueprint);
+        RainShadowRefinementPlanner.plan(blueprint);
+        RunoffDischargePlanner.plan(blueprint);
+
         StreamNetworkExtractor.extract(
                 blueprint
         );

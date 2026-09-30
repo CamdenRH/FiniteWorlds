@@ -186,7 +186,7 @@ public final class RiverCarvingConstraintPlanner {
                     valley.valleyHalfWidthBlocks()
             );
 
-            double localCut = clamp(cutBudget[i], 2.0, 72.0);
+            double localCut = clamp(cutBudget[i], 2.0, 220.0);
             double localFill = clamp(fillBudget[i], 0.5, 12.0);
             double localCutStrength = clamp01(cutStrength[i] * junctionBlend);
             double localFillStrength = clamp01(fillStrength[i] * junctionBlend);
@@ -233,9 +233,9 @@ public final class RiverCarvingConstraintPlanner {
             double grade
     ) {
         double base = switch (type) {
-            case MOUNTAIN_CONFINED -> 42.0;
-            case V_VALLEY -> 34.0;
-            case FOOTHILL -> 26.0;
+            case MOUNTAIN_CONFINED -> 175.0;
+            case V_VALLEY -> 135.0;
+            case FOOTHILL -> 70.0;
             case ALLUVIAL -> 18.0;
             case LOWLAND_FLOODPLAIN -> 12.0;
         };
@@ -249,7 +249,7 @@ public final class RiverCarvingConstraintPlanner {
                         + reliefAllowance
                         + 0.65 * Math.max(0.0, bankfullDepth),
                 4.0,
-                72.0
+                220.0
         );
     }
 

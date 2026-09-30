@@ -25,7 +25,7 @@ public final class RiverCenterlineSynthesizer {
     private static final int OFFSET_SMOOTHING_PASSES = 3;
 
     private static final double MINIMUM_CORRIDOR_BLOCKS = 5.0;
-    private static final double MAXIMUM_CORRIDOR_CELLS = 0.62;
+    private static final double MAXIMUM_CORRIDOR_CELLS = 3.5;
 
     private static final double TERRAIN_PROBE_MIN_BLOCKS = 6.0;
     private static final double TERRAIN_PROBE_MAX_BLOCKS = 28.0;
@@ -637,8 +637,8 @@ public final class RiverCenterlineSynthesizer {
         double corridor =
                 blocksPerCell
                         * (
-                        0.08
-                                + 0.46 * lateralFreedom
+                        0.14
+                                + 3.0 * lateralFreedom
                 )
                         + widthInfluence;
 
@@ -677,6 +677,11 @@ public final class RiverCenterlineSynthesizer {
                         520.0,
                         lateralFreedom
                 );
+
+        double reachLength = 0;
+        for (int i=1; i<samples.size(); i++) reachLength += Math.sqrt(distanceSquared(samples.get(i-1).point(), samples.get(i).point()));
+        corridorBlocks = Math.min(corridorBlocks, reachLength * 0.16);
+        double phase = wanderNoise.sample(samples.getFirst().point().x()/1900, samples.getFirst().point().z()/1900) * Math.PI;
 
         for (int i = 1; i < samples.size() - 1; i++) {
             SamplePoint sample =
@@ -724,8 +729,9 @@ public final class RiverCenterlineSynthesizer {
             double noiseOffset =
                     corridorBlocks
                             * (
-                            0.78 * primary
-                                    + 0.22 * secondary
+                            0.42 * primary
+                                    + 0.12 * secondary
+                                    + 0.64 * Math.sin(sample.normalizedDistance() * reachLength / primaryWavelength * Math.PI * 2 + phase)
                     );
 
             double probeDistance =

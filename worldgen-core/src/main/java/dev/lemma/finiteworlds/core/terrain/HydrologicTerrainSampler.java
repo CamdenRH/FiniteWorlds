@@ -7,6 +7,9 @@ import dev.lemma.finiteworlds.core.hydrology.RiverCrossSectionPoint;
 import dev.lemma.finiteworlds.core.hydrology.RiverSegmentCrossSection;
 import dev.lemma.finiteworlds.core.hydrology.RiverSegmentValleyCorridor;
 
+import dev.lemma.finiteworlds.core.SeedUtil;
+import dev.lemma.finiteworlds.core.noise.ValueNoise;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,10 +25,12 @@ final class HydrologicTerrainSampler {
     private static final double BUCKET_SIZE = 512.0;
     private static final double MAX_EDGE_LENGTH = 32.0;
     private final WorldBlueprint blueprint;
+    private final ValueNoise shorelineNoise;
     private final Edge[] edges;
     private final Map<Long, int[]> buckets;
 
-    HydrologicTerrainSampler(WorldBlueprint blueprint) {
+    HydrologicTerrainSampler(WorldBlueprint blueprint, long seed) {
+        this.shorelineNoise = new ValueNoise(SeedUtil.derive(seed, "lake-shoreline"));
         this.blueprint = blueprint;
         HydrologyGrid hydrology = blueprint.hydrology();
         Map<Integer, RiverSegmentValleyCorridor> corridors = new HashMap<>();
@@ -84,6 +89,7 @@ final class HydrologicTerrainSampler {
         double terrain = terrainElevation;
         double water = Double.NaN;
         boolean river = false;
+        double strongestInfluence = -1.0;
         int[] candidates = buckets.get(key(bucket(x), bucket(z)));
         if (candidates != null) {
             // Bucket entries are grouped by source segment. Only its closest
@@ -97,7 +103,14 @@ final class HydrologicTerrainSampler {
                 if (nearest != null && (edge == null || edge.segmentId != nearest.segmentId)) {
                     Influence influence = influence(nearest, nearestT, nearestDistance, x, z, terrainElevation);
                     if (influence != null) {
-                        terrain = Math.min(terrain, influence.elevation);
+                        // The physical bed and banks replace the coarse carved grid.
+                        // Otherwise a low macro corner can leave a dry trench below
+                        // adjacent water, or an unrelated valley shoulder can cut
+                        // through a channel. The closest channel envelope wins.
+                        if (influence.strength > strongestInfluence) {
+                            terrain = influence.elevation;
+                            strongestInfluence = influence.strength;
+                        }
                         if (Double.isFinite(influence.water)) {
                             water = Double.isFinite(water) ? Math.min(water, influence.water) : influence.water;
                             river = true;
@@ -165,14 +178,14 @@ final class HydrologicTerrainSampler {
         if (distance <= width) {
             double normalized = distance / width;
             double target = bed + (bank - bed) * normalized * normalized * normalized;
-            return new Influence(target, Math.floor(target) < Math.floor(water) ? water : Double.NaN);
+            return new Influence(target, Math.floor(target) < Math.floor(water) ? water : Double.NaN, 3.0 - distance / width);
         }
         if (distance <= inner) {
             double target = lerp(bank, floodplain, smoothstep(width, inner, distance));
-            return new Influence(Math.min(original, target), Double.NaN);
+            return new Influence(target, Double.NaN, 2.0 * (1.0 - smoothstep(width, valley, distance)));
         }
-        double target = lerp(floodplain, Math.max(floodplain, original), smoothstep(inner, valley, distance));
-        return new Influence(Math.min(original, target), Double.NaN);
+        double target = lerp(floodplain, original, smoothstep(inner, valley, distance));
+        return new Influence(target, Double.NaN, 2.0 * (1.0 - smoothstep(width, valley, distance)));
     }
 
     private LakeInfluence lakeAt(double x, double z) {
@@ -180,6 +193,11 @@ final class HydrologicTerrainSampler {
         if (hydrology.lakeCount() == 0) {
             return null;
         }
+        // Smooth coordinate distortion removes the underlying 64-block lattice
+        // from lake shores while preserving one coherent lake level and ID.
+        double unwarpedX=x, unwarpedZ=z;
+        x += 22 * shorelineNoise.fbm(unwarpedX/170,unwarpedZ/170,3,2,.5);
+        z += 22 * shorelineNoise.fbm(unwarpedX/170+37,unwarpedZ/170-51,3,2,.5);
         double halfWorld = blueprint.config().worldSizeBlocks() / 2.0;
         double px = (x + halfWorld) / blueprint.config().worldSizeBlocks() * (blueprint.resolution() - 1);
         double pz = (z + halfWorld) / blueprint.config().worldSizeBlocks() * (blueprint.resolution() - 1);
@@ -305,7 +323,7 @@ final class HydrologicTerrainSampler {
                         double waterA, double waterB, double valleyA, double valleyB) {
     }
 
-    private record Influence(double elevation, double water) {
+    private record Influence(double elevation, double water, double strength) {
     }
 
     private record LakeInfluence(double water, double depth, double support) {

@@ -4,8 +4,8 @@ import dev.lemma.finiteworlds.core.WorldBlueprint;
 
 /** Gives the landmark edifice its own height budget, leaving other terrain unchanged. */
 public final class LandmarkVolcanoHeightPlanner {
-    // The dimension ends at Y=1535. Leave room for interpolation error and surface blocks.
-    public static final double TARGET_SUMMIT_Y = 1520.0;
+    // The dimension ends at Y=1535. Reserve approximately 100 blocks above the highest authored summit.
+    public static final double TARGET_SUMMIT_Y = 1432.0;
 
     private LandmarkVolcanoHeightPlanner() {
     }

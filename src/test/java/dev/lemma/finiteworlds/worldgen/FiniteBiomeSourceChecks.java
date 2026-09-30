@@ -193,7 +193,7 @@ public final class FiniteBiomeSourceChecks {
                 }
             }
         }
-        require(surfacePeak >= 1500.0 && surfacePeak <= FiniteChunkGenerator.MAX_Y,
+        require(surfacePeak >= 1400.0 && surfacePeak <= 1435.0,
                 "Landmark summit must approach the dimension ceiling, got " + surfacePeak);
 
         int riverX = 0;

@@ -49,7 +49,7 @@ public final class LandmarkVolcanoHeightPlannerChecks {
                 maximum = Math.max(maximum, height);
             }
         }
-        assertTrue(maximum >= 1519.0 && maximum <= 1521.0,
+        assertTrue(maximum >= 1431.0 && maximum <= 1433.0,
                 "Continuous summit missed height budget: " + maximum);
     }
 
