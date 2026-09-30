@@ -193,6 +193,8 @@ public final class FiniteChunkGenerator
                                 worldZ
                         );
 
+                BiomeIntent intent = surfaceIntent(worldX, worldZ);
+
                 for (
                         int y = DEVELOPMENT_TERRAIN_MIN_Y;
                         y <= column.top();
@@ -253,6 +255,8 @@ public final class FiniteChunkGenerator
 
         BlockColumn column = blockColumn(x, z);
 
+        BiomeIntent intent = surfaceIntent(x, z);
+
         for (
                 int y = DEVELOPMENT_TERRAIN_MIN_Y;
                 y <= column.top();
@@ -309,6 +313,11 @@ public final class FiniteChunkGenerator
         int top() {
             return Math.max(terrainHeight, waterHeight);
         }
+    }
+
+    private BiomeIntent surfaceIntent(int x, int z) {
+        return getBiomeSource() instanceof FiniteBiomeSource finite
+                ? finite.intentAtBlock(x, z) : BiomeIntent.TEMPERATE_FOREST;
     }
 
     @Override
