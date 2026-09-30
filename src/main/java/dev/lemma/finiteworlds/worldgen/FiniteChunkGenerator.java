@@ -6,6 +6,7 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import dev.lemma.finiteworlds.core.WorldBlueprint;
 import dev.lemma.finiteworlds.core.WorldConfig;
+import dev.lemma.finiteworlds.core.biome.BiomeIntent;
 import dev.lemma.finiteworlds.core.generator.CascadiaGenerator;
 import dev.lemma.finiteworlds.core.terrain.TerrainSampler;
 
@@ -29,9 +30,13 @@ import net.minecraft.world.gen.chunk.ChunkGenerator;
 import net.minecraft.world.gen.chunk.VerticalBlockSample;
 
 import net.minecraft.world.gen.noise.NoiseConfig;
+import net.minecraft.registry.RegistryWrapper;
+import net.minecraft.structure.StructureSet;
+import net.minecraft.world.gen.chunk.placement.StructurePlacementCalculator;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 public final class FiniteChunkGenerator
@@ -58,7 +63,7 @@ public final class FiniteChunkGenerator
      */
     public static final int DEVELOPMENT_TERRAIN_MIN_Y = -64;
 
-    private final TerrainSampler terrainSampler;
+    private volatile TerrainSampler terrainSampler;
 
     public static final MapCodec<FiniteChunkGenerator>
             CODEC =
@@ -72,13 +77,9 @@ public final class FiniteChunkGenerator
                                     ),
 
                             Codec.LONG
-                                    .optionalFieldOf(
-                                            "seed",
-                                            12345L
-                                    )
+                                    .optionalFieldOf("seed")
                                     .forGetter(
-                                            generator ->
-                                                    generator.seed
+                                            FiniteChunkGenerator::serializedSeed
                                     )
 
                     ).apply(
@@ -87,35 +88,72 @@ public final class FiniteChunkGenerator
                     )
             );
 
-    private final long seed;
-
-    private final WorldBlueprint blueprint;
+    private long seed;
+    private volatile boolean seedBound;
+    private final Optional<Long> configuredSeed;
 
     public FiniteChunkGenerator(
             BiomeSource biomeSource,
             long seed
     ) {
+        this(biomeSource, Optional.of(seed));
+    }
 
-        super(biomeSource);
+    private FiniteChunkGenerator(BiomeSource biomeSource, Optional<Long> configuredSeed) {
+        super(configuredSeed.isPresent() && biomeSource instanceof FiniteBiomeSource finite
+                ? finite.withSeed(configuredSeed.get()) : biomeSource);
+        this.seed = configuredSeed.orElse(0L);
+        this.seedBound = configuredSeed.isPresent();
+        this.configuredSeed = configuredSeed;
+    }
 
-        this.seed =
-                seed;
+    private Optional<Long> serializedSeed() {
+        // New worlds use Minecraft's saved GeneratorOptions seed. Keep their
+        // generator seed absent so Re-create World can select a different seed.
+        return configuredSeed;
+    }
 
-        WorldConfig config =
-                WorldConfig.production();
+    /** Minecraft calls this with ServerWorld.getSeed() before creating its generation context. */
+    @Override
+    public StructurePlacementCalculator createStructurePlacementCalculator(
+            RegistryWrapper<StructureSet> structures, NoiseConfig noiseConfig, long worldSeed) {
+        bindWorldSeed(worldSeed);
+        return super.createStructurePlacementCalculator(structures, noiseConfig, worldSeed);
+    }
 
-        this.blueprint =
-                new CascadiaGenerator()
-                        .generate(
-                                seed,
-                                config
-                        );
+    private synchronized void bindWorldSeed(long worldSeed) {
+        if (seedBound) {
+            // A serialized generator seed preserves already-created worlds.
+            return;
+        }
+        if (getBiomeSource() instanceof FiniteBiomeSource finite) {
+            finite.bindSeed(worldSeed);
+        }
+        seed = worldSeed;
+        seedBound = true;
+    }
 
-        this.terrainSampler =
-                new TerrainSampler(
-                        blueprint,
-                        seed
-                );
+    private TerrainSampler terrainSampler() {
+        if (!seedBound) {
+            throw new IllegalStateException("Finite Worlds has not received the saved world seed yet");
+        }
+        TerrainSampler result = terrainSampler;
+        if (result == null) {
+            synchronized (this) {
+                result = terrainSampler;
+                if (result == null) {
+                    if (getBiomeSource() instanceof FiniteBiomeSource finite) {
+                        result = finite.terrainSampler();
+                    } else {
+                        WorldBlueprint blueprint = new CascadiaGenerator().generate(
+                                seed, WorldConfig.production());
+                        result = new TerrainSampler(blueprint, seed);
+                    }
+                    terrainSampler = result;
+                }
+            }
+        }
+        return result;
     }
 
     @Override
@@ -149,35 +187,19 @@ public final class FiniteChunkGenerator
                 int worldZ =
                         startZ + localZ;
 
-                int height =
-                        surfaceHeight(
+                BlockColumn column =
+                        blockColumn(
                                 worldX,
                                 worldZ
                         );
 
                 for (
                         int y = DEVELOPMENT_TERRAIN_MIN_Y;
-                        y <= height;
+                        y <= column.top();
                         y++
                 ) {
 
-                    BlockState state;
-
-                    if (y == height) {
-                        state =
-                                Blocks.GRASS_BLOCK
-                                        .getDefaultState();
-
-                    } else if (y >= height - 3) {
-                        state =
-                                Blocks.DIRT
-                                        .getDefaultState();
-
-                    } else {
-                        state =
-                                Blocks.STONE
-                                        .getDefaultState();
-                    }
+                    BlockState state = columnState(y, column);
 
                     pos.set(
                             worldX,
@@ -192,28 +214,6 @@ public final class FiniteChunkGenerator
                     );
                 }
 
-                if (height < SEA_LEVEL) {
-
-                    for (
-                            int y = height + 1;
-                            y <= SEA_LEVEL;
-                            y++
-                    ) {
-
-                        pos.set(
-                                worldX,
-                                y,
-                                worldZ
-                        );
-
-                        chunk.setBlockState(
-                                pos,
-                                Blocks.WATER
-                                        .getDefaultState(),
-                                0
-                        );
-                    }
-                }
             }
         }
 
@@ -230,7 +230,10 @@ public final class FiniteChunkGenerator
             HeightLimitView world,
             NoiseConfig noiseConfig
     ) {
-        return surfaceHeight(x, z) + 1;
+        BlockColumn column = blockColumn(x, z);
+        return (heightmap == Heightmap.Type.OCEAN_FLOOR
+                || heightmap == Heightmap.Type.OCEAN_FLOOR_WG
+                ? column.terrainHeight() : column.top()) + 1;
     }
 
     @Override
@@ -248,32 +251,15 @@ public final class FiniteChunkGenerator
                 Blocks.AIR.getDefaultState()
         );
 
-        int surface =
-                surfaceHeight(x, z);
+        BlockColumn column = blockColumn(x, z);
 
         for (
                 int y = DEVELOPMENT_TERRAIN_MIN_Y;
-                y <= surface;
+                y <= column.top();
                 y++
         ) {
             states[y - MIN_Y] =
-                    y == surface
-                            ? Blocks.GRASS_BLOCK
-                            .getDefaultState()
-                            : Blocks.STONE
-                            .getDefaultState();
-        }
-
-        if (surface < SEA_LEVEL) {
-            for (
-                    int y = surface + 1;
-                    y <= SEA_LEVEL;
-                    y++
-            ) {
-                states[y - MIN_Y] =
-                        Blocks.WATER
-                                .getDefaultState();
-            }
+                    columnState(y, column);
         }
 
         return new VerticalBlockSample(
@@ -282,30 +268,47 @@ public final class FiniteChunkGenerator
         );
     }
 
-    private int surfaceHeight(
+    private BlockColumn blockColumn(
             int worldX,
             int worldZ
     ) {
 
-        double elevation =
-                terrainSampler
-                        .surfaceElevationAt(
-                                worldX,
-                                worldZ
-                        );
+        var sampled = terrainSampler().sampleColumn(worldX, worldZ);
+        // Match TerrainColumn's wet-footprint contract at shallow banks.
+        int height = clampHeight((int) Math.floor(sampled.terrainElevation()));
+        int waterHeight = Double.isFinite(sampled.waterSurfaceElevation())
+                ? clampHeight((int) Math.floor(sampled.waterSurfaceElevation()))
+                : MIN_Y - 1;
+        BiomeIntent intent = getBiomeSource() instanceof FiniteBiomeSource finite
+                ? finite.intentAtBlock(worldX, worldZ) : BiomeIntent.TEMPERATE_FOREST;
+        return new BlockColumn(height, waterHeight, intent);
+    }
 
-        int height =
-                (int) Math.round(
-                        elevation
-                );
+    private static int clampHeight(int height) {
+        return Math.max(DEVELOPMENT_TERRAIN_MIN_Y, Math.min(MAX_Y, height));
+    }
 
-        return Math.max(
-                DEVELOPMENT_TERRAIN_MIN_Y,
-                Math.min(
-                        MAX_Y,
-                        height
-                )
-        );
+    private static BlockState columnState(int y, BlockColumn column) {
+        if (y > column.terrainHeight()) {
+            return y <= column.waterHeight()
+                    ? Blocks.WATER.getDefaultState() : Blocks.AIR.getDefaultState();
+        }
+        boolean submerged = column.waterHeight() > column.terrainHeight();
+        boolean coastal = switch (column.intent()) {
+            case SANDY_BEACH, COLD_BEACH, GRAVEL_BEACH, ROCKY_COAST -> true;
+            default -> false;
+        };
+        if (submerged && !coastal) {
+            return (y >= column.terrainHeight() - 3 ? Blocks.GRAVEL : Blocks.STONE)
+                    .getDefaultState();
+        }
+        return CoastalSurfaceMaterials.stateAt(y, column.terrainHeight(), column.intent());
+    }
+
+    private record BlockColumn(int terrainHeight, int waterHeight, BiomeIntent intent) {
+        int top() {
+            return Math.max(terrainHeight, waterHeight);
+        }
     }
 
     @Override
@@ -315,7 +318,7 @@ public final class FiniteChunkGenerator
             NoiseConfig noiseConfig,
             Chunk chunk
     ) {
-        // Surface already placed for prototype.
+        // Column materials and planned water are placed during populateNoise.
     }
 
     @Override
@@ -360,5 +363,13 @@ public final class FiniteChunkGenerator
         text.add(
                 "Finite Worlds generator"
         );
+        text.add("Finite Worlds seed=" + (seedBound ? Long.toString(seed) : "awaiting world seed"));
+        if (!seedBound) {
+            return;
+        }
+        BlockColumn column = blockColumn(pos.getX(), pos.getZ());
+        text.add("Finite Worlds ground Y=" + column.terrainHeight()
+                + (column.waterHeight() > column.terrainHeight()
+                ? ", water Y=" + column.waterHeight() : ""));
     }
 }

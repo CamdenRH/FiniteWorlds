@@ -8,6 +8,8 @@ public final class TerrainSampler {
 
     private final LocalTerrainSampler localTerrain;
 
+    private final HydrologicTerrainSampler hydrologicTerrain;
+
     public TerrainSampler(
             WorldBlueprint blueprint,
             long worldSeed
@@ -19,14 +21,21 @@ public final class TerrainSampler {
         this.localTerrain =
                 new LocalTerrainSampler(
                         worldSeed,
-                        blueprint.config().seaLevel()
+                        blueprint
                 );
+
+        this.hydrologicTerrain = new HydrologicTerrainSampler(blueprint);
     }
 
     public double surfaceElevationAt(
             double x,
             double z
     ) {
+
+        return sampleColumn(x, z).terrainElevation();
+    }
+
+    public TerrainColumn sampleColumn(double x, double z) {
 
         double macro =
                 blueprint.smoothElevationAtBlock(
@@ -41,7 +50,7 @@ public final class TerrainSampler {
                         macro
                 );
 
-        return macro + local;
+        return hydrologicTerrain.sample(x, z, macro + local);
     }
 
     public double macroElevationAt(

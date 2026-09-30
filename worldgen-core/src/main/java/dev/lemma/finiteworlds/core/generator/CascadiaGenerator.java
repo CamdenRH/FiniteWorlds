@@ -13,6 +13,7 @@ import dev.lemma.finiteworlds.core.geography.ContinentSampler;
 import dev.lemma.finiteworlds.core.geography.PhysiographySample;
 import dev.lemma.finiteworlds.core.geography.PhysiographySampler;
 import dev.lemma.finiteworlds.core.geography.CoastalMorphologyPlanner;
+import dev.lemma.finiteworlds.core.geography.LandmarkVolcanoHeightPlanner;
 
 import dev.lemma.finiteworlds.core.noise.ValueNoise;
 
@@ -224,6 +225,8 @@ public final class CascadiaGenerator {
                         )
                 );
 
+        float[] volcanicUplift = new float[size * size];
+
 
         for (
                 int z = 0;
@@ -281,10 +284,13 @@ public final class CascadiaGenerator {
                         coastRangeRidgeNoise,
                         plateauReliefNoise,
                         oceanNoise,
-                        cascadeMorphologySampler
+                        cascadeMorphologySampler,
+                        volcanicUplift
                 );
             }
         }
+
+        LandmarkVolcanoHeightPlanner.apply(blueprint, volcanicUplift);
 
         /*
          * COAST2 authors physical pocket beaches and coastal benches after
@@ -547,7 +553,8 @@ public final class CascadiaGenerator {
             ValueNoise coastRangeRidgeNoise,
             ValueNoise plateauReliefNoise,
             ValueNoise oceanNoise,
-            CascadeMorphologySampler cascadeMorphologySampler
+            CascadeMorphologySampler cascadeMorphologySampler,
+            float[] volcanicUplift
     ) {
 
         double coastDistance =
@@ -629,6 +636,9 @@ public final class CascadiaGenerator {
             double cascadeUplift =
                     cascadeMorphology.uplift()
                             * inlandMountainFade;
+
+            volcanicUplift[z * blueprint.resolution() + x] =
+                    (float) (cascadeMorphology.volcanoUplift() * inlandMountainFade);
 
 
             blueprint.setBaseElevation(

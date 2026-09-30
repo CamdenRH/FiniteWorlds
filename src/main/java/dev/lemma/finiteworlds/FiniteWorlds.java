@@ -1,6 +1,7 @@
 package dev.lemma.finiteworlds;
 
 import dev.lemma.finiteworlds.worldgen.FiniteChunkGenerator;
+import dev.lemma.finiteworlds.worldgen.FiniteBiomeSource;
 
 import net.fabricmc.api.ModInitializer;
 
@@ -20,6 +21,12 @@ public final class FiniteWorlds implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+
+		Registry.register(
+				Registries.BIOME_SOURCE,
+				id("finite"),
+				FiniteBiomeSource.CODEC
+		);
 
 		Registry.register(
 				Registries.CHUNK_GENERATOR,
